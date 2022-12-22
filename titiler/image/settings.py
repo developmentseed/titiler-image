@@ -28,22 +28,22 @@ class IIIFSettings(pydantic.BaseSettings):
     """IIIF settings"""
 
     # The maximum width in pixels supported for this image.
-    maxWidth: Optional[int]
+    max_width: Optional[int]
     # The maximum height in pixels supported for this image.
-    maxHeight: Optional[int]
+    max_height: Optional[int]
     # The maximum area in pixels supported for this image.
-    maxArea: Optional[int]
+    max_area: Optional[int]
 
     @pydantic.root_validator
     def check_max(cls, values):
         """Check MaxWitdh and MaxHeight configuration."""
         # maxWidth must be specified if maxHeight is specified.
-        keys = {"maxWidth", "maxHeight"}
+        keys = {"max_width", "max_height"}
         if keys.intersection(values):
-            if "maxWidth" not in values:
-                raise Exception("maxWidth has to be set if maxHeight is.")
-            if "maxHeight" not in values:
-                values["maxHeight"] = values["maxWidth"]
+            if "max_width" not in values:
+                raise Exception("max_width has to be set if max_height is.")
+            if "max_height" not in values:
+                values["max_height"] = values["max_width"]
 
         return values
 

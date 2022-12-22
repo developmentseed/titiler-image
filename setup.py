@@ -17,6 +17,7 @@ extra_reqs = {
         "pytest-cov",
         "pytest-asyncio",
         "httpx",
+        # "iiif-validator",
     ],
 }
 

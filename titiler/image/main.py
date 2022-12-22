@@ -1,8 +1,8 @@
 """TiTiler-Image FastAPI application."""
 
 import math
+import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
 
 import numpy
 from affine import Affine
@@ -311,7 +311,7 @@ def deepzoom(
 #         if key.lower() not in qs_key_to_remove
 #     ]
 #     if qs:
-#         dpz_url += f"?{urlencode(qs)}"
+#         dpz_url += f"?{urllib.parse.urlencode(qs)}"
 
 #     with ImageReader(src_path) as dst:
 #         info = dst.info()
@@ -389,7 +389,7 @@ def tilejson(
         if key.lower() not in qs_key_to_remove
     ]
     if qs:
-        tiles_url += f"?{urlencode(qs)}"
+        tiles_url += f"?{urllib.parse.urlencode(qs)}"
 
     with ImageReader(src_path) as dst:
         return {
@@ -493,7 +493,7 @@ def image_viewer(
     """Return Simple Image viewer."""
     tilejson_url = app.router.url_path_for("tilejson")
     if request.query_params._list:
-        tilejson_url += f"?{urlencode(request.query_params._list)}"
+        tilejson_url += f"?{urllib.parse.urlencode(request.query_params._list)}"
 
     return templates.TemplateResponse(
         name="local-image.html",
@@ -521,6 +521,7 @@ def iiif_info(
     identifier: str = Path(description="Dataset URL"),
 ):
     """Image Information Request."""
+    identifier = urllib.parse.unquote(identifier)
     with ImageReader(identifier) as dst:
         # If overviews
         # Set Sizes
@@ -555,8 +556,6 @@ def _get_sizes(
         width, height = w, h
 
         if w > max_width:
-            # calculate wrt original width, height rather than
-            # w, h to avoid compounding rounding issues
             w = max_width
             h = int(height * max_width / width)
 
@@ -622,6 +621,50 @@ def rotate(img: ImageData, angle: float, expand: bool = False):
     )
 
 
+def image_to_grayscale(img: ImageData) -> ImageData:
+    """Convert Image to Grayscale using ITU-R 601-2 luma transform."""
+    if img.count == 1:
+        return img
+
+    if img.count == 3:
+        data = (
+            img.data[0] * 299 / 1000
+            + img.data[1] * 587 / 1000
+            + img.data[2] * 114 / 1000
+        )
+        return ImageData(
+            data.astype("uint8"),
+            img.mask,
+            assets=img.assets,
+            crs=img.crs,
+            bounds=img.bounds,
+            band_names=["b1"],
+            metadata=img.metadata,
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Number of band {img.count} for grayscale transformation.",
+    )
+
+
+def image_to_bitonal(img: ImageData) -> ImageData:
+    """Convert Image to Bitonal
+
+    All values larger than 127 are set to 255 (white), all other values to 0 (black).
+    """
+    img = image_to_grayscale(img)
+    return ImageData(
+        numpy.where(img.data > 127, 255, 0).astype("uint8"),
+        img.mask,
+        assets=img.assets,
+        crs=img.crs,
+        bounds=img.bounds,
+        band_names=["b1"],
+        metadata=img.metadata,
+    )
+
+
 @app.get(
     "/{identifier}/{region}/{size}/{rotation}/{quality}.{format}",
     **img_endpoint_params,
@@ -638,8 +681,9 @@ def iiif_image(  # noqa
     rotation: str = Path(
         description="The rotation parameter specifies mirroring and rotation"
     ),
-    quality: IIIFQuality = Path(
-        description="The quality parameter determines whether the image is delivered in color, grayscale or black and white."
+    quality: IIIFQuality = Query(
+        IIIFQuality.default,
+        description="The quality parameter determines whether the image is delivered in color, grayscale or black and white.",
     ),
     format: IIIFImageFormat = Path(
         description="The format of the returned image is expressed as a suffix, mirroring common filename extensions, at the end of the URI."
@@ -663,6 +707,8 @@ def iiif_image(  # noqa
     ref: https://iiif.io/api/image/3.0
 
     """
+    identifier = urllib.parse.unquote(identifier)
+
     with ImageReader(identifier) as dst:
         dst_width = dst.dataset.width
         dst_height = dst.dataset.height
@@ -705,8 +751,8 @@ def iiif_image(  # noqa
             x, y, w, h = list(map(float, region.split(",")))
 
             # Service should return an image cropped at the image’s edge, rather than adding empty space.
-            w = min(dst_width - x, w + x)
-            h = min(dst_height - y, h + y)
+            # w = min(dst_width - x, w + x)
+            # h = min(dst_height - y, h + y)
 
             window = windows.Window(col_off=x, row_off=y, width=w, height=h)
 
@@ -730,48 +776,122 @@ def iiif_image(  # noqa
         # Formats are: w, ,h w,h pct:p !w,h full max ^w, ^,h ^w,h
         #################################################################################
         out_width, out_height = window.width, window.height
-        if size in ["max", "^max"]:
-            pass
+        aspect_ratio = out_width / out_height
+
+        if size == "max":
+            # max: The extracted region is returned at the maximum size available, but will not be upscaled.
+            # The resulting image will have the pixel dimensions of the extracted region,
+            # unless it is constrained to a smaller size by maxWidth, maxHeight, or maxArea
+            out_width, out_height = _get_sizes(
+                out_width,
+                out_height,
+                max_width=iiif_settings.max_width,
+                max_height=iiif_settings.max_height,
+                max_area=iiif_settings.max_area,
+            )
+
+        elif size == "^max":
+            # ^max: The extracted region is scaled to the maximum size permitted by maxWidth, maxHeight, or maxArea.
+            # If the resulting dimensions are greater than the pixel width and height of the extracted region, the extracted region is upscaled.
+            if aspect_ratio > 1:
+                out_width = max(out_width, iiif_settings.max_width)
+                out_height = math.ceil(out_width / aspect_ratio)
+            else:
+                out_height = max(out_height, iiif_settings.max_height)
+                out_width = math.ceil(aspect_ratio * out_height)
+
+            out_width, out_height = _get_sizes(
+                out_width,
+                out_height,
+                max_area=iiif_settings.max_area,
+            )
 
         elif size.startswith("pct:"):
+            # pct:n: The width and height of the returned image is scaled to n percent of the width and height of the extracted region.
+            # The value of n must not be greater than 100.
             pct_size = float(size.replace("pct:", ""))
             if pct_size > 100 or pct_size < 0:
                 raise HTTPException(
-                    status_code=400, detail=f"Invalid Size parameter: {region}."
+                    status_code=400, detail=f"Invalid Size parameter: {size}."
                 )
 
             out_width = round(_percent(out_width, pct_size))
             out_height = round(_percent(out_height, pct_size))
 
         elif size.startswith("^pct:"):
+            # ^pct:n: The width and height of the returned image is scaled to n percent of the width and height of the extracted region.
+            # For values of n greater than 100, the extracted region is upscaled.
             pct_size = float(size.replace("^pct:", ""))
             if pct_size < 0:
                 raise HTTPException(
-                    status_code=400, detail=f"Invalid Size parameter: {region}."
+                    status_code=400, detail=f"Invalid Size parameter: {size}."
                 )
 
             out_width = round(_percent(out_width, pct_size))
             out_height = round(_percent(out_height, pct_size))
 
+        elif size.split(","):
+            sizes = size.split(",")
+            if size.startswith("^!"):
+                # TODO
+                pass
+                # ^!w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio. The returned image must be as large as possible but not larger than w, h, or server-imposed limits.
+
+            elif size.startswith("!"):
+                # !w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio. The returned image must be as large as possible but not larger than the extracted region, w or h, or server-imposed limits.
+                # TODO
+                pass
+
+            elif size.startswith("^"):
+                # ^w,: The extracted region should be scaled so that the width of the returned image is exactly equal to w. If w is greater than the pixel width of the extracted region, the extracted region is upscaled.
+                # ^,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h. If h is greater than the pixel height of the extracted region, the extracted region is upscaled.
+                # ^w,h:	The width and height of the returned image are exactly w and h. The aspect ratio of the returned image may be significantly different than the extracted region, resulting in a distorted image. If w and/or h are greater than the corresponding pixel dimensions of the extracted region, the extracted region is upscaled.
+                # TODO
+                pass
+
+            elif size.endswith(","):
+                # w,: The extracted region should be scaled so that the width of the returned image is exactly equal to w.
+                # The value of w must not be greater than the width of the extracted region.
+                out_width = int(sizes[0])
+                if out_width > window.width:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid 'w' parameter: {out_width} (greater than region width {window.width}).",
+                    )
+                out_height = math.ceil(out_width / aspect_ratio)
+
+            elif size.startswith(","):
+                # ,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h.
+                # The value of h must not be greater than the height of the extracted region.
+                out_height = int(sizes[1])
+                if out_height > window.height:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid 'h' parameter: {out_height} (greater than region height {window.height}).",
+                    )
+                out_width = math.ceil(aspect_ratio * out_height)
+
+            elif len(sizes) == 2:
+                # w,h: The width and height of the returned image are exactly w and h.
+                # The aspect ratio of the returned image may be significantly different than the extracted region, resulting in a distorted image.
+                # The values of w and h must not be greater than the corresponding pixel dimensions of the extracted region.
+                out_width, out_height = list(map(int, sizes))
+
+            else:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid Size parameter: {size}."
+                )
+
         else:
             raise HTTPException(
-                status_code=400, detail=f"Invalid Size parameter: {region}."
+                status_code=400, detail=f"Invalid Size parameter: {size}."
             )
-
-        # Make sure we stay within the limits
-        out_width, out_height = _get_sizes(
-            out_width,
-            out_height,
-            max_width=iiif_settings.max_width,
-            max_height=iiif_settings.max_height,
-            max_area=iiif_settings.max_area,
-        )
 
         # Region THEN Size THEN Rotation THEN Quality THEN Format
         image = dst.read(
             window=window,
-            width=out_width,
-            height=out_height,
+            width=int(out_width),
+            height=int(out_height),
             **layer_params,
             **dataset_params,
         )
@@ -793,6 +913,14 @@ def iiif_image(  # noqa
 
     if color_formula:
         image.apply_color_formula(color_formula)
+
+    if quality == IIIFQuality.gray:
+        colormap = dst_colormap = None
+        image = image_to_grayscale(image)
+
+    if quality == IIIFQuality.bitonal:
+        colormap = dst_colormap = None
+        image = image_to_bitonal(image)
 
     content = image.render(
         add_mask=add_mask if add_mask is not None else True,

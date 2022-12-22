@@ -78,11 +78,11 @@ class iiifInfo(BaseModel):
     # The height in pixels of the full image, given as an integer.
     height: int
     # The maximum width in pixels supported for this image.
-    maxWidth: Optional[int] = iiif_settings.maxWidth
+    maxWidth: Optional[int] = iiif_settings.max_width
     # The maximum height in pixels supported for this image.
-    maxHeight: Optional[int] = iiif_settings.maxHeight
+    maxHeight: Optional[int] = iiif_settings.max_height
     # The maximum area in pixels supported for this image.
-    maxArea: Optional[int] = iiif_settings.maxArea
+    maxArea: Optional[int] = iiif_settings.max_area
 
     preferredFormats: Optional[List[str]] = ["png", "jpeg", "webp", "tif", "jp2"]
 
