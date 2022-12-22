@@ -1,0 +1,19 @@
+ARG PYTHON_VERSION=3.11
+
+FROM ghcr.io/vincentsarago/uvicorn-gunicorn:${PYTHON_VERSION}
+
+
+ENV CURL_CA_BUNDLE /etc/ssl/certs/ca-certificates.crt
+
+WORKDIR /tmp
+
+COPY titiler/ titiler/
+COPY setup.py setup.py
+COPY setup.cfg setup.cfg
+COPY README.md README.md
+
+RUN pip install --no-cache-dir --upgrade .
+RUN rm -rf titiler/ setup.py setup.cfg README.md
+
+ENV MODULE_NAME titiler.image.main
+ENV VARIABLE_NAME app

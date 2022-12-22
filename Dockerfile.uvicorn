@@ -1,0 +1,18 @@
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+WORKDIR /tmp
+
+COPY titiler/ titiler/
+COPY setup.py setup.py
+COPY setup.cfg setup.cfg
+COPY README.md README.md
+
+RUN pip install --no-cache-dir --upgrade . uvicorn
+RUN rm -rf titiler/ setup.py setup.cfg README.md
+
+# http://www.uvicorn.org/settings/
+ENV HOST 0.0.0.0
+ENV PORT 80
+CMD uvicorn titiler.image.main:app --host ${HOST} --port ${PORT}
