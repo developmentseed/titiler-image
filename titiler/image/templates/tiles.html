@@ -16,10 +16,6 @@
         <div id='map'></div>
         <script type="text/javascript">
 
-L.tileLayer.image = function (url, options) {
-	return new L.TileLayer.NonGeoImage(url, options);
-};
-
 var map = L.map('map', {crs: L.CRS.Simple}).setView(new L.LatLng(0,0), 0);
 
 fetch('{{ tilejson_endpoint }}')
@@ -28,12 +24,7 @@ fetch('{{ tilejson_endpoint }}')
         throw new Error('Network response was not ok.')
     })
     .then(data => {
-        var left = data.bounds[0],
-            bottom = data.bounds[0],
-            right = data.bounds[2],
-            top = data.bounds[1];
-
-            L.tileLayer(
+        L.tileLayer(
             data.tiles[0],
             {
                 minzoom: data.minzoom,
