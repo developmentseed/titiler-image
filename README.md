@@ -1,3 +1,7 @@
+# **Work In Progress**
+
+This project is not yet at a `release` stage and should be considered as `Work In Progress`. Any contribution is welcome.
+
 <p align="center">
   <p align="center">TiTiler Image.</p>
 </p>
@@ -52,6 +56,8 @@ $ python -m pip install -e .
 $ pip install uvicorn
 $ uvicorn titiler.image.main:app --reload
 ```
+
+![](https://user-images.githubusercontent.com/10407788/209324921-b0404f0f-5da6-425e-9916-9adb640af1de.png)
 
 ### Using Docker
 
