@@ -9,8 +9,8 @@ from titiler.image import __version__ as titiler_image_version
 from titiler.image.factory import (
     DeepZoomFactory,
     IIIFFactory,
+    LocalTilerFactory,
     MetadataFactory,
-    TilerFactory,
 )
 from titiler.image.settings import api_settings
 
@@ -63,8 +63,8 @@ app.add_middleware(
 meta = MetadataFactory()
 app.include_router(meta.router, tags=["Metadata"])
 
-tiles = TilerFactory(router_prefix="/tiles")
-app.include_router(tiles.router, tags=["Tiles"], prefix="/tiles")
+tiles = LocalTilerFactory(router_prefix="/image")
+app.include_router(tiles.router, tags=["Local Tiles"], prefix="/image")
 
 iiif = IIIFFactory(router_prefix="/iiif")
 app.include_router(iiif.router, tags=["IIIF"], prefix="/iiif")

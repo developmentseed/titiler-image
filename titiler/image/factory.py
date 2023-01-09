@@ -31,6 +31,7 @@ from titiler.image.settings import iiif_settings
 from titiler.image.utils import (
     _get_sizes,
     _percent,
+    accept_media_type,
     image_to_bitonal,
     image_to_grayscale,
     rotate,
@@ -40,7 +41,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Match, compile_path, replace_params
 from starlette.templating import Jinja2Templates
 
@@ -213,8 +219,8 @@ class MetadataFactory(BaseFactory):
 # Local Tiles Endpoints Factory
 ###############################################################################
 @dataclass
-class TilerFactory(BaseFactory):
-    """Tiler Factory."""
+class LocalTilerFactory(BaseFactory):
+    """Local Tiler Factory."""
 
     add_viewer: bool = True
 
@@ -301,10 +307,10 @@ class TilerFactory(BaseFactory):
                     "tiles": [tiles_url],
                 }
 
-        @self.router.get("/{z}/{x}/{y}", **img_endpoint_params)
-        @self.router.get("/{z}/{x}/{y}.{format}", **img_endpoint_params)
-        @self.router.get("/{z}/{x}/{y}@{scale}x", **img_endpoint_params)
-        @self.router.get("/{z}/{x}/{y}@{scale}x.{format}", **img_endpoint_params)
+        @self.router.get("/tiles/{z}/{x}/{y}", **img_endpoint_params)
+        @self.router.get("/tiles/{z}/{x}/{y}.{format}", **img_endpoint_params)
+        @self.router.get("/tiles/{z}/{x}/{y}@{scale}x", **img_endpoint_params)
+        @self.router.get("/tiles/{z}/{x}/{y}@{scale}x.{format}", **img_endpoint_params)
         def tile(
             z: int,
             x: int,
@@ -429,18 +435,30 @@ class IIIFFactory(BaseFactory):
     def register_image_api(self):  # noqa: C901
         """Register IIIF Image API routes."""
 
-        # TODO: Content Negotiation application/ld+json or application/json
         @self.router.get(
             "/{identifier}/info.json",
             response_model=iiifInfo,
-            responses={200: {"description": "Image Information Request"}},
             response_model_exclude_none=True,
+            responses={
+                200: {
+                    "description": "Image Information Request",
+                    "content": {
+                        "application/json": {},
+                        "application/ld+json": {},
+                    },
+                },
+            },
         )
         def iiif_info(
             request: Request,
             identifier: str = Path(description="Dataset URL"),
         ):
             """Image Information Request."""
+            output_type = accept_media_type(
+                request.headers.get("accept", ""),
+                ["application/json", "application/ld+json"],
+            )
+
             url_path = self.url_for(request, "iiif_redirect", identifier=identifier)
 
             identifier = urllib.parse.unquote(identifier)
@@ -448,11 +466,17 @@ class IIIFFactory(BaseFactory):
                 # TODO: If overviews:
                 # Set Sizes
                 # Set Tiles (using min/max zooms)
-                return {
-                    "id": url_path,
-                    "width": dst.dataset.width,
-                    "height": dst.dataset.height,
-                }
+                info = iiifInfo(
+                    id=url_path, width=dst.dataset.width, height=dst.dataset.height
+                )
+
+                if output_type == "application/ld+json":
+                    return StreamingResponse(
+                        iter((info.json(exclude_none=True) + "\n",)),
+                        media_type='application/ld+json;profile="http://iiif.io/api/image/3/context.json"',
+                    )
+
+            return info
 
         @self.router.get("/{identifier}", include_in_schema=False)
         def iiif_redirect(
@@ -646,7 +670,6 @@ class IIIFFactory(BaseFactory):
                     if size.startswith("^!"):
                         # ^!w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio.
                         # The returned image must be as large as possible but not larger than w, h, or server-imposed limits.
-                        # TODO
                         max_width, max_height = list(
                             map(int, size.replace("!^", "").split(","))
                         )

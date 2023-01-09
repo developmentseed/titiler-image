@@ -141,3 +141,52 @@ def image_to_bitonal(img: ImageData) -> ImageData:
         band_names=["b1"],
         metadata=img.metadata,
     )
+
+
+def accept_media_type(
+    accept: str, mediatypes: typing.List[str]
+) -> typing.Optional[str]:
+    """Return MediaType based on accept header and available mediatype.
+
+    Links:
+    - https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+    - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept
+
+    """
+    accept_values = {}
+    for m in accept.replace(" ", "").split(","):
+        values = m.split(";")
+        if len(values) == 1:
+            name = values[0]
+            quality = 1.0
+        else:
+            name = values[0]
+            groups = dict([param.split("=") for param in values[1:]])  # type: ignore
+            try:
+                q = groups.get("q")
+                quality = float(q) if q else 1.0
+            except ValueError:
+                quality = 0
+
+        # if quality is 0 we ignore encoding
+        if quality:
+            accept_values[name] = quality
+
+    # Create Preference matrix
+    media_preference = {
+        v: [n for (n, q) in accept_values.items() if q == v]
+        for v in sorted({q for q in accept_values.values()}, reverse=True)
+    }
+
+    # Loop through available compression and encoding preference
+    for _, pref in media_preference.items():
+        for media in mediatypes:
+            if media in pref:
+                return media
+
+    # If no specified encoding is supported but "*" is accepted,
+    # take one of the available compressions.
+    if "*" in accept_values and mediatypes:
+        return mediatypes[0]
+
+    return None
