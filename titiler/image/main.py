@@ -8,6 +8,7 @@ from titiler.core.middleware import CacheControlMiddleware
 from titiler.image import __version__ as titiler_image_version
 from titiler.image.factory import (
     DeepZoomFactory,
+    GCPSTilerFactory,
     IIIFFactory,
     LocalTilerFactory,
     MetadataFactory,
@@ -65,6 +66,9 @@ app.include_router(meta.router, tags=["Metadata"])
 
 tiles = LocalTilerFactory(router_prefix="/image")
 app.include_router(tiles.router, tags=["Local Tiles"], prefix="/image")
+
+tiles = GCPSTilerFactory(router_prefix="/map")
+app.include_router(tiles.router, tags=["Geo Tiles"], prefix="/map")
 
 iiif = IIIFFactory(router_prefix="/iiif")
 app.include_router(iiif.router, tags=["IIIF"], prefix="/iiif")

@@ -1,0 +1,95 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.89193,
+                    31.667035
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 1488,
+                "y": 3878
+            },
+            "id": "1"
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.890768,
+                    31.666297
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 4055,
+                "y": 3870
+            },
+            "id": "2"
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.891431,
+                    31.665479
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 4043,
+                "y": 5929
+            },
+            "id": "3"
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.890104,
+                    31.667109
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 4025,
+                "y": 1781
+            },
+            "id": "4"
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.891314,
+                    31.667864
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 1404,
+                "y": 1853
+            },
+            "id": "5"
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "coordinates": [
+                    -92.892577,
+                    31.667426
+                ],
+                "type": "Point"
+            },
+            "properties": {
+                "x": 17,
+                "y": 3869
+            },
+            "id": "6"
+        }
+    ]
+}
