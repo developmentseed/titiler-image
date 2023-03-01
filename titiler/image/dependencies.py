@@ -49,10 +49,11 @@ def get_gcps(gcps_file: str) -> List[GroundControlPoint]:
 
     return [
         # GroundControlPoint(row, col, x, y, z)
+        # https://github.com/allmaps/iiif-api/blob/georef/source/extension/georef/index.md#35-the-resourcecoords-property
         GroundControlPoint(
-            f["properties"]["y"],
-            f["properties"]["x"],
-            *f["geometry"]["coordinates"],
+            f["properties"]["resourceCoords"][1],
+            f["properties"]["resourceCoords"][0],
+            *f["geometry"]["coordinates"],  # x, y, z
             id=f.get("id")
         )
         for f in body["features"]
