@@ -5,10 +5,9 @@ import typing
 
 import numpy
 from affine import Affine
+from fastapi import HTTPException
 from rasterio.warp import reproject
 from rio_tiler.models import ImageData
-
-from fastapi import HTTPException
 
 
 def _percent(x: float, y: float) -> float:
@@ -18,9 +17,9 @@ def _percent(x: float, y: float) -> float:
 def _get_sizes(
     w: int,
     h: int,
-    max_width: int = None,
-    max_height: int = None,
-    max_area: int = None,
+    max_width: typing.Optional[int] = None,
+    max_height: typing.Optional[int] = None,
+    max_area: typing.Optional[int] = None,
 ) -> typing.Tuple[int, int]:
     """Return Output width/height constrained by environment."""
     # use size constraints if present, else full
@@ -175,7 +174,7 @@ def accept_media_type(
     # Create Preference matrix
     media_preference = {
         v: [n for (n, q) in accept_values.items() if q == v]
-        for v in sorted({q for q in accept_values.values()}, reverse=True)
+        for v in sorted(set(accept_values.values()), reverse=True)
     }
 
     # Loop through available compression and encoding preference

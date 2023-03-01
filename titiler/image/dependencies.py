@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from fastapi import Query
 from rasterio.enums import Resampling
 
 from titiler.core.dependencies import DefaultDependency
-
-from fastapi import Query
 
 ResamplingName = Enum(  # type: ignore
     "ResamplingName", [(r.name, r.name) for r in Resampling]

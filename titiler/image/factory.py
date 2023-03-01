@@ -6,10 +6,21 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
+from fastapi.dependencies.utils import get_parameterless_sub_dependant
 from rasterio import windows
 from rio_tiler.io import ImageReader
 from rio_tiler.models import Info
 from rio_tiler.types import ColorMapType
+from starlette.requests import Request
+from starlette.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
+from starlette.routing import Match, compile_path, replace_params
+from starlette.templating import Jinja2Templates
 
 from titiler.core.dependencies import (
     BidxExprParams,
@@ -36,19 +47,6 @@ from titiler.image.utils import (
     image_to_grayscale,
     rotate,
 )
-
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
-from fastapi.dependencies.utils import get_parameterless_sub_dependant
-
-from starlette.requests import Request
-from starlette.responses import (
-    HTMLResponse,
-    RedirectResponse,
-    Response,
-    StreamingResponse,
-)
-from starlette.routing import Match, compile_path, replace_params
-from starlette.templating import Jinja2Templates
 
 try:
     from importlib.resources import files as resources_files  # type: ignore
@@ -795,11 +793,11 @@ class IIIFFactory(BaseFactory):
                 if rot < 0 or rot > 360:
                     raise ValueError("Invalid rotation value")
 
-            except (ValueError):
+            except (ValueError) as e:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Invalid rotation parameter: {rotation}.",
-                )
+                ) from e
 
             image = rotate(image, rot, expand=True, mirrored=rotation.startswith("!"))
 
