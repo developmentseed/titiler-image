@@ -4,7 +4,6 @@ from typing import Any, Dict
 
 import pytest
 from rasterio.io import MemoryFile
-
 from starlette.testclient import TestClient
 
 

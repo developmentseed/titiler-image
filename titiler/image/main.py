@@ -1,7 +1,11 @@
 """TiTiler-Image FastAPI application."""
 import warnings
 
+from fastapi import FastAPI
 from rasterio.errors import NotGeoreferencedWarning, RasterioIOError
+from starlette import status
+from starlette.middleware.cors import CORSMiddleware
+from starlette_cramjam.middleware import CompressionMiddleware
 
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
@@ -16,12 +20,6 @@ from titiler.image.factory import (
 )
 from titiler.image.reader import GCPSReader
 from titiler.image.settings import api_settings
-
-from fastapi import FastAPI
-
-from starlette import status
-from starlette.middleware.cors import CORSMiddleware
-from starlette_cramjam.middleware import CompressionMiddleware
 
 app = FastAPI(title=api_settings.name, version=titiler_image_version)
 

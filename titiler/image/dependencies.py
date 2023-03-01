@@ -7,12 +7,11 @@ from typing import List, Optional
 
 import httpx
 from cachetools import TTLCache, cached
+from fastapi import HTTPException, Query
 from rasterio.control import GroundControlPoint
 from rasterio.enums import Resampling
 
 from titiler.core.dependencies import DefaultDependency
-
-from fastapi import HTTPException, Query
 
 ResamplingName = Enum(  # type: ignore
     "ResamplingName", [(r.name, r.name) for r in Resampling]
@@ -64,7 +63,7 @@ def get_gcps(gcps_file: str) -> List[GroundControlPoint]:
 class GCPSParams(DefaultDependency):
     """GCPS parameters."""
 
-    gcps: List[GroundControlPoint] = None
+    gcps: Optional[List[GroundControlPoint]] = None
 
     def __init__(
         self,
