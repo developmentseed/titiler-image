@@ -43,6 +43,7 @@ def get_gcps(gcps_file: str) -> List[GroundControlPoint]:
     """Fetch and parse GCPS file."""
     if gcps_file.startswith("http"):
         body = httpx.get(gcps_file).json()
+
     else:
         with open(gcps_file, "r") as f:
             body = json.load(f)
@@ -71,11 +72,11 @@ class GCPSParams(DefaultDependency):
         gcps: Optional[List[str]] = Query(
             None,
             title="Ground Control Points",
-            description="Ground Control Points",
+            description="Ground Control Points in form of `row (y), col (x), lon, lat, alt`",
         ),
         gcps_file: Optional[str] = Query(
             None,
-            title="Ground Control Points Filepath",
+            title="Ground Control Points GeoJSON path",
         ),
     ):
         """Initialize GCPSParams
@@ -84,7 +85,9 @@ class GCPSParams(DefaultDependency):
         """
         if gcps:
             self.gcps: List[GroundControlPoint] = [  # type: ignore
-                GroundControlPoint(*list(map(float, gcps.split(",")))) for gcps in gcps
+                # WARNING: gpcs should be in form of `row (y), col (x), lon, lat, alt`
+                GroundControlPoint(*list(map(float, gcps.split(","))))
+                for gcps in gcps
             ]
         elif gcps_file:
             self.gcps = get_gcps(gcps_file)
