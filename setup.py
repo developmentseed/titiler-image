@@ -6,7 +6,7 @@ with open("README.md") as f:
     long_description = f.read()
 
 inst_reqs = [
-    "titiler.core>=0.10.2,<0.11",
+    "titiler.core>=0.11.1,<0.12",
     "starlette-cramjam>=0.3,<0.4",
     "python-dotenv",
 ]
