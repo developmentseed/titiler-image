@@ -2,7 +2,7 @@
 
 import warnings
 import xml.etree.ElementTree as ET
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import attr
 import rasterio
@@ -11,6 +11,7 @@ from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 from rasterio.dtypes import _gdal_typename
 from rasterio.enums import MaskFlags
+from rasterio.io import DatasetReader
 from rasterio.transform import from_gcps
 from rasterio.vrt import WarpedVRT
 from rio_tiler.constants import WGS84_CRS
@@ -25,24 +26,34 @@ class GCPSReader(Reader):
     gcps: Optional[List[GroundControlPoint]] = attr.ib(default=None)
     gcps_crs: Optional[CRS] = attr.ib(default=WGS84_CRS)
 
+    cutline: Optional[str] = attr.ib(default=None)
+
+    dataset: Union[DatasetReader, WarpedVRT] = attr.ib(init=False)
+
     def __attrs_post_init__(self):
         """Define _kwargs, open dataset and get info."""
-        if not self.dataset:
-            dataset = self._ctx_stack.enter_context(rasterio.open(self.input))
-            if self.gcps:
-                vrt_xml = vrt_doc(dataset, gcps=self.gcps, gcps_crs=self.gcps_crs)
-                dataset = self._ctx_stack.enter_context(rasterio.open(vrt_xml))
+        dataset = self._ctx_stack.enter_context(rasterio.open(self.input))
 
-            if dataset.gcps[0]:
-                self.dataset = self._ctx_stack.enter_context(
-                    WarpedVRT(
-                        dataset,
-                        src_crs=dataset.gcps[1],
-                        src_transform=from_gcps(dataset.gcps[0]),
-                    )
-                )
-            else:
-                self.dataset = dataset
+        # External GCPS
+        if self.gcps:
+            vrt_xml = vrt_doc(dataset, gcps=self.gcps, gcps_crs=self.gcps_crs)
+            dataset = self._ctx_stack.enter_context(rasterio.open(vrt_xml))
+
+        vrt_options = {}
+        if dataset.gcps[0]:
+            vrt_options["src_crs"] = dataset.gcps[1]
+            vrt_options["src_transform"] = from_gcps(dataset.gcps[0])
+
+        if self.cutline:
+            vrt_options["cutline"] = self.cutline
+
+        if vrt_options:
+            self.dataset = self._ctx_stack.enter_context(
+                WarpedVRT(dataset, **vrt_options)
+            )
+
+        else:
+            self.dataset = dataset
 
         self.bounds = tuple(self.dataset.bounds)
         self.crs = self.dataset.crs

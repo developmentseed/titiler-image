@@ -8,6 +8,7 @@ from typing import List, Optional
 import httpx
 from cachetools import TTLCache, cached
 from fastapi import HTTPException, Query
+from geojson_pydantic import MultiPolygon, Polygon
 from rasterio.control import GroundControlPoint
 from rasterio.enums import Resampling
 
@@ -55,10 +56,37 @@ def get_gcps(gcps_file: str) -> List[GroundControlPoint]:
             f["properties"]["resourceCoords"][1],
             f["properties"]["resourceCoords"][0],
             *f["geometry"]["coordinates"],  # x, y, z
-            id=f.get("id")
+            id=f.get("id"),
         )
         for f in body["features"]
     ]
+
+
+@cached(TTLCache(maxsize=512, ttl=3600))
+def get_cutline(cutline_file: str) -> str:
+    """Fetch and parse Cutline file."""
+    if cutline_file.startswith("http"):
+        body = httpx.get(cutline_file).json()
+
+    else:
+        with open(cutline_file, "r") as f:
+            body = json.load(f)
+
+    # We assume the geojson is a Feature (not a Feature Collectionw)
+    if "geometry" in body:
+        body = body["geometry"]
+
+    geom_type = body["type"]
+    if geom_type == "Polygon":
+        return Polygon.parse_obj(body).wkt
+
+    elif geom_type == "MultiPolygon":
+        return MultiPolygon.parse_obj(body).wkt
+
+    else:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid GeoJSON type: {geom_type}."
+        )
 
 
 @dataclass
@@ -66,6 +94,7 @@ class GCPSParams(DefaultDependency):
     """GCPS parameters."""
 
     gcps: Optional[List[GroundControlPoint]] = None
+    cutline: Optional[str] = None
 
     def __init__(
         self,
@@ -78,10 +107,19 @@ class GCPSParams(DefaultDependency):
             None,
             title="Ground Control Points GeoJSON path",
         ),
+        cutline: Optional[str] = Query(
+            None,
+            title="WKT Image Cutline (equivalent of the SVG Selector)",
+            description="WKT Polygon or MultiPolygon.",
+        ),
+        cutline_file: Optional[str] = Query(
+            None,
+            title="GeoJSON file for cutline",
+        ),
     ):
-        """Initialize GCPSParams
+        """Initialize GCPSParams and Cutline
 
-        Note: We only want `gcps` to be forwarded to the reader so we use a custom `__init__` method used by FastAPI to parse the QueryParams.
+        Note: We only want `gcps` or `cutline` to be forwarded to the reader so we use a custom `__init__` method used by FastAPI to parse the QueryParams.
         """
         if gcps:
             self.gcps: List[GroundControlPoint] = [  # type: ignore
@@ -96,3 +134,9 @@ class GCPSParams(DefaultDependency):
             raise HTTPException(
                 status_code=400, detail="Need at least 3 gcps to wrap an image."
             )
+
+        if cutline:
+            self.cutline = cutline
+
+        elif cutline_file:
+            self.cutline = get_cutline(cutline_file)
