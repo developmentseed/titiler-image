@@ -17,6 +17,7 @@ from rasterio.vrt import WarpedVRT
 from rio_tiler.constants import WGS84_CRS
 from rio_tiler.errors import NoOverviewWarning
 from rio_tiler.io import Reader
+from rio_tiler.utils import has_alpha_band
 
 
 @attr.s
@@ -48,6 +49,18 @@ class GCPSReader(Reader):
             vrt_options["cutline"] = self.cutline
 
         if vrt_options:
+            nodata = dataset.nodata
+            if nodata is not None:
+                vrt_options.update(
+                    {"nodata": nodata, "add_alpha": False, "src_nodata": nodata}
+                )
+
+            else:
+                vrt_options["add_alpha"] = True
+
+            if has_alpha_band(dataset):
+                vrt_options.update({"add_alpha": False})
+
             self.dataset = self._ctx_stack.enter_context(
                 WarpedVRT(dataset, **vrt_options)
             )

@@ -4,12 +4,12 @@ import abc
 import math
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
 from rasterio import windows
-from rio_tiler.io import ImageReader
+from rio_tiler.io import BaseReader, ImageReader
 from rio_tiler.models import Info
 from rio_tiler.types import ColorMapType
 from starlette.requests import Request
@@ -25,6 +25,7 @@ from starlette.templating import Jinja2Templates
 from titiler.core.dependencies import (
     BidxExprParams,
     ColorMapParams,
+    DefaultDependency,
     HistogramParams,
     ImageParams,
     RescalingParams,
@@ -36,8 +37,9 @@ from titiler.core.models.responses import Statistics
 from titiler.core.resources.enums import ImageType, MediaType
 from titiler.core.resources.responses import JSONResponse, XMLResponse
 from titiler.core.routing import EndpointScope
-from titiler.image.dependencies import DatasetParams
+from titiler.image.dependencies import DatasetParams, GCPSParams
 from titiler.image.models import iiifInfo
+from titiler.image.reader import GCPSReader
 from titiler.image.resources.enums import IIIFImageFormat, IIIFQuality
 from titiler.image.settings import iiif_settings
 from titiler.image.utils import (
@@ -1072,6 +1074,13 @@ class DeepZoomFactory(BaseFactory):
 @dataclass
 class GeoTilerFactory(TilerFactory):
     """Like Tiler Factory but with less endpoints."""
+
+    reader: Type[BaseReader] = GCPSReader
+
+    reader_dependency: Type[DefaultDependency] = GCPSParams
+
+    # Rasterio Dataset Options (nodata, unscale, resampling)
+    dataset_dependency: Type[DefaultDependency] = DatasetParams
 
     def register_routes(self):
         """
