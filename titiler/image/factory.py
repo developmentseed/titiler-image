@@ -30,7 +30,7 @@ from titiler.core.dependencies import (
     RescalingParams,
     StatisticsParams,
 )
-from titiler.core.factory import img_endpoint_params
+from titiler.core.factory import TilerFactory, img_endpoint_params
 from titiler.core.models.mapbox import TileJSON
 from titiler.core.models.responses import Statistics
 from titiler.core.resources.enums import ImageType, MediaType
@@ -1064,3 +1064,31 @@ class DeepZoomFactory(BaseFactory):
                 },
                 media_type=MediaType.html.value,
             )
+
+
+###############################################################################
+# Geo Tiler Factory
+###############################################################################
+@dataclass
+class GeoTilerFactory(TilerFactory):
+    """Like Tiler Factory but with less endpoints."""
+
+    def register_routes(self):
+        """
+        This Method register routes to the router.
+        Because we wrap the endpoints in a class we cannot define the routes as
+        methods (because of the self argument). The HACK is to define routes inside
+        the class method and register them after the class initialization.
+        """
+        # Default Routes
+        self.info()
+        self.tile()
+        self.tilejson()
+        self.wmts()
+
+        # Optional Routes
+        if self.add_preview:
+            self.preview()
+
+        if self.add_viewer:
+            self.map_viewer()

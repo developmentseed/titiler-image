@@ -8,12 +8,12 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette_cramjam.middleware import CompressionMiddleware
 
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
-from titiler.core.factory import TilerFactory
 from titiler.core.middleware import CacheControlMiddleware
 from titiler.image import __version__ as titiler_image_version
 from titiler.image.dependencies import GCPSParams
 from titiler.image.factory import (
     DeepZoomFactory,
+    GeoTilerFactory,
     IIIFFactory,
     LocalTilerFactory,
     MetadataFactory,
@@ -64,16 +64,16 @@ app.add_middleware(
 meta = MetadataFactory()
 app.include_router(meta.router, tags=["Metadata"])
 
+iiif = IIIFFactory(router_prefix="/iiif")
+app.include_router(iiif.router, tags=["IIIF"], prefix="/iiif")
+
 image_tiles = LocalTilerFactory(router_prefix="/image")
 app.include_router(image_tiles.router, tags=["Local Tiles"], prefix="/image")
 
-geo_tiles = TilerFactory(
+geo_tiles = GeoTilerFactory(
     reader=GCPSReader, reader_dependency=GCPSParams, router_prefix="/geo"
 )
 app.include_router(geo_tiles.router, tags=["Geo Tiles"], prefix="/geo")
-
-iiif = IIIFFactory(router_prefix="/iiif")
-app.include_router(iiif.router, tags=["IIIF"], prefix="/iiif")
 
 deepzoom = DeepZoomFactory(router_prefix="/deepzoom")
 app.include_router(deepzoom.router, tags=["Deepzoom"], prefix="/deepzoom")
