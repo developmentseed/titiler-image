@@ -57,8 +57,6 @@ $ pip install uvicorn
 $ uvicorn titiler.image.main:app --reload
 ```
 
-![](https://user-images.githubusercontent.com/10407788/222417904-98b2dc2b-3e4d-43cf-a883-9dc2355f81f4.png)
-
 ### Using Docker
 
 ```
@@ -72,6 +70,126 @@ It runs `titiler.image` using Gunicorn web server. To run Uvicorn based version:
 ```
 $ docker-compose up --build tiler-uvicorn
 ```
+
+## Factories
+
+`titiler-image` provide multiple endpoint Factories (see https://developmentseed.org/titiler/advanced/tiler_factories/)
+
+### MetadataFactory
+
+#### Endpoints
+
+- `/info?url={...}`
+- `/metadata?url={...}`
+
+```python
+from fastapi import FastAPI
+from titiler.image.factory import MetadataFactory
+
+app = FastAPI()
+meta = MetadataFactory()
+app.include_router(meta.router)
+```
+
+### IIIFFactory
+
+#### Endpoints
+
+- `/{identifier}/info.json`: IIIF Image Information Request
+- `/{identifier}`: Redirect do the Image Information Request endpoint
+- `/{identifier}/{region}/{size}/{rotation}/{quality}.{format}`: IIIF Image Request
+- `/{identifier}/viewer`: Simple IIIF viewer (not part of the IIIF specification)
+
+```python
+from fastapi import FastAPI
+from titiler.image.factory import IIIFFactory
+
+app = FastAPI()
+iiif = IIIFFactory()
+app.include_router(iiif.router)
+```
+
+### LocalTilerFactory
+
+#### Endpoints
+
+- `/tilejson.json?url={...}`: TileJSON document
+- `/tiles/{z}/{x}/{y}[@{scale}x.{format}]?url={...}`: Tiles endpoint
+- `/viewer?url={...}`: Simple local tiles viewer
+
+```python
+from fastapi import FastAPI
+from titiler.image.factory import LocalTilerFactory
+
+app = FastAPI()
+local_tiles = LocalTilerFactory()
+app.include_router(local_tiles.router)
+```
+
+### GeoTilerFactory
+
+This is a lightweight version of `titiler.core.factory.TilerFactory`.
+
+#### Endpoints
+
+- `/info[.geojson]?url={...}`: Dataset info (with geographic information)
+- `[/TileMatrixSetId]/tilejson.json?url={...}`: TileJSON document
+- `/tiles[/TileMatrixSetId]/{z}/{x}/{y}[@{scale}x.{format}]?url={...}`: Tiles endpoint
+- `[/{TileMatrixSetId}]/WMTSCapabilities.xml`: OGC WMTS document
+- `[/{TileMatrixSetId}]/map?url={...}`: Simple dataset viewer
+- `/preview[.{format}]?url={...}`: Preview image from a dataset
+
+```python
+from fastapi import FastAPI
+from titiler.image.factory import GeoTilerFactory
+
+app = FastAPI()
+geo = GeoTilerFactory()
+app.include_router(geo.router)
+```
+
+### DeepZoomFactory
+
+#### Endpoints
+
+- `/deepzoom.dzi?url={...}`: DeepZoom metadata.
+- `/{z}/{x}_{y}[.{format}]?url={...}`: DeepZoom Tiles
+- `/deepzoom.html?url={...}`: Deepzoom viewer
+
+```python
+from fastapi import FastAPI
+from titiler.image.factory import DeepZoomFactory
+
+app = FastAPI()
+deepzoom = DeepZoomFactory()
+app.include_router(deepzoom.router)
+```
+
+All together
+
+```python
+app = FastAPI()
+
+meta = MetadataFactory()
+app.include_router(meta.router, tags=["Metadata"])
+
+iiif = IIIFFactory(router_prefix="/iiif")
+app.include_router(iiif.router, tags=["IIIF"], prefix="/iiif")
+
+image_tiles = LocalTilerFactory(router_prefix="/image")
+app.include_router(image_tiles.router, tags=["Local Tiles"], prefix="/image")
+
+geo_tiles = GeoTilerFactory(
+    reader=GCPSReader, reader_dependency=GCPSParams, router_prefix="/geo"
+)
+app.include_router(geo_tiles.router, tags=["Geo Tiles"], prefix="/geo")
+
+deepzoom = DeepZoomFactory(router_prefix="/deepzoom")
+app.include_router(deepzoom.router, tags=["Deepzoom"], prefix="/deepzoom")
+```
+
+![](https://user-images.githubusercontent.com/10407788/222417904-98b2dc2b-3e4d-43cf-a883-9dc2355f81f4.png)
+
 
 ## Contribution & Development
 
