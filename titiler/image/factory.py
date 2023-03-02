@@ -30,6 +30,7 @@ from titiler.core.dependencies import (
     RescalingParams,
     StatisticsParams,
 )
+from titiler.core.factory import TilerFactory, img_endpoint_params
 from titiler.core.models.mapbox import TileJSON
 from titiler.core.models.responses import Statistics
 from titiler.core.resources.enums import ImageType, MediaType
@@ -57,30 +58,14 @@ except ImportError:
 # TODO: mypy fails in python 3.9, we need to find a proper way to do this
 templates = Jinja2Templates(directory=str(resources_files(__package__) / "templates"))  # type: ignore
 
-img_endpoint_params: Dict[str, Any] = {
-    "responses": {
-        200: {
-            "content": {
-                "image/png": {},
-                "image/jpeg": {},
-                "image/jpg": {},
-                "image/webp": {},
-                "image/jp2": {},
-                "image/tiff; application=geotiff": {},
-                "application/x-binary": {},
-            },
-            "description": "Return an image.",
-        }
-    },
-    "response_class": Response,
-}
-
 
 @dataclass  # type: ignore
 class BaseFactory(metaclass=abc.ABCMeta):
     """BaseFactory.
 
     Abstract Base Class for endpoints factories.
+
+    Note: This is a custom version of titiler.core.factory.BaseTilerFactory (striped of most options)
 
     """
 
@@ -353,13 +338,15 @@ class LocalTilerFactory(BaseFactory):
             if color_formula:
                 image.apply_color_formula(color_formula)
 
+            if cmap := colormap or dst_colormap:
+                image = image.apply_colormap(cmap)
+
             if not format:
                 format = ImageType.jpeg if image.mask.all() else ImageType.png
 
             content = image.render(
                 add_mask=add_mask if add_mask is not None else True,
                 img_format=format.driver,
-                colormap=colormap or dst_colormap,
                 **format.profile,
             )
 
@@ -815,10 +802,12 @@ class IIIFFactory(BaseFactory):
                 colormap = dst_colormap = None
                 image = image_to_bitonal(image)
 
+            if cmap := colormap or dst_colormap:
+                image = image.apply_colormap(cmap)
+
             content = image.render(
                 add_mask=add_mask if add_mask is not None else True,
                 img_format=format.driver,
-                colormap=colormap or dst_colormap,
                 **format.profile,
             )
             return Response(content, media_type=format.mediatype)
@@ -1008,10 +997,12 @@ class DeepZoomFactory(BaseFactory):
                 if color_formula:
                     image.apply_color_formula(color_formula)
 
+                if cmap := colormap or dst_colormap:
+                    image = image.apply_colormap(cmap)
+
                 content = image.render(
                     add_mask=add_mask if add_mask is not None else True,
                     img_format=format.driver,
-                    colormap=colormap or dst_colormap,
                     **format.profile,
                 )
 
@@ -1073,3 +1064,31 @@ class DeepZoomFactory(BaseFactory):
                 },
                 media_type=MediaType.html.value,
             )
+
+
+###############################################################################
+# Geo Tiler Factory
+###############################################################################
+@dataclass
+class GeoTilerFactory(TilerFactory):
+    """Like Tiler Factory but with less endpoints."""
+
+    def register_routes(self):
+        """
+        This Method register routes to the router.
+        Because we wrap the endpoints in a class we cannot define the routes as
+        methods (because of the self argument). The HACK is to define routes inside
+        the class method and register them after the class initialization.
+        """
+        # Default Routes
+        self.info()
+        self.tile()
+        self.tilejson()
+        self.wmts()
+
+        # Optional Routes
+        if self.add_preview:
+            self.preview()
+
+        if self.add_viewer:
+            self.map_viewer()
