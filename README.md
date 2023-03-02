@@ -57,7 +57,7 @@ $ pip install uvicorn
 $ uvicorn titiler.image.main:app --reload
 ```
 
-![](https://user-images.githubusercontent.com/10407788/209324921-b0404f0f-5da6-425e-9916-9adb640af1de.png)
+![](https://user-images.githubusercontent.com/10407788/222417904-98b2dc2b-3e4d-43cf-a883-9dc2355f81f4.png)
 
 ### Using Docker
 
