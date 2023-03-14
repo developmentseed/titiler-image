@@ -111,8 +111,7 @@ class BaseFactory(metaclass=abc.ABCMeta):
                 )
             base_url += prefix
 
-        url = url_path.make_absolute_url(base_url=base_url)
-        return url
+        return str(url_path.make_absolute_url(base_url=base_url))
 
     def add_route_dependencies(
         self,
