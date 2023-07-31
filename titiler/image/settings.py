@@ -2,39 +2,49 @@
 
 from typing import Optional
 
-import pydantic
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings
 
 
-class ApiSettings(pydantic.BaseSettings):
+class ApiSettings(BaseSettings):
     """API settings"""
 
     name: str = "titiler-image"
     cors_origins: str = "*"
     cachecontrol: str = "public, max-age=3600"
+    root_path: str = ""
 
-    @pydantic.validator("cors_origins")
+    model_config = {
+        "env_prefix": "TITILER_IMAGE_API_",
+        "env_file": ".env",
+        "extra": "ignore",
+    }
+
+    @field_validator("cors_origins")
     def parse_cors_origin(cls, v):
         """Parse CORS origins."""
         return [origin.strip() for origin in v.split(",")]
 
-    class Config:
-        """model config"""
 
-        env_prefix = "TITILER_IMAGE_API_"
-        env_file = ".env"
-
-
-class IIIFSettings(pydantic.BaseSettings):
+class IIIFSettings(BaseSettings):
     """IIIF settings"""
 
     # The maximum width in pixels supported for this image.
-    max_width: Optional[int]
-    # The maximum height in pixels supported for this image.
-    max_height: Optional[int]
-    # The maximum area in pixels supported for this image.
-    max_area: Optional[int]
+    max_width: Optional[int] = None
 
-    @pydantic.root_validator
+    # The maximum height in pixels supported for this image.
+    max_height: Optional[int] = None
+
+    # The maximum area in pixels supported for this image.
+    max_area: Optional[int] = None
+
+    model_config = {
+        "env_prefix": "TITILER_IMAGE_IIIF_",
+        "env_file": ".env",
+        "extra": "ignore",
+    }
+
+    @model_validator(mode="before")
     def check_max(cls, values):
         """Check MaxWitdh and MaxHeight configuration."""
         # maxWidth must be specified if maxHeight is specified.
@@ -46,12 +56,6 @@ class IIIFSettings(pydantic.BaseSettings):
                 values["max_height"] = values["max_width"]
 
         return values
-
-    class Config:
-        """model config"""
-
-        env_prefix = "TITILER_IMAGE_IIIF_"
-        env_file = ".env"
 
 
 iiif_settings = IIIFSettings()

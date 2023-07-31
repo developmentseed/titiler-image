@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
+from pydantic import conint
 from rasterio import windows
 from rio_tiler.io import BaseReader, ImageReader
 from rio_tiler.models import Info
@@ -21,6 +22,7 @@ from starlette.responses import (
 )
 from starlette.routing import Match, compile_path, replace_params
 from starlette.templating import Jinja2Templates
+from typing_extensions import Annotated
 
 from titiler.core.dependencies import (
     BidxExprParams,
@@ -39,7 +41,7 @@ from titiler.core.resources.responses import JSONResponse, XMLResponse
 from titiler.core.routing import EndpointScope
 from titiler.image.dependencies import DatasetParams, GCPSParams
 from titiler.image.models import iiifInfo
-from titiler.image.reader import GCPSReader
+from titiler.image.reader import Reader
 from titiler.image.resources.enums import IIIFImageFormat, IIIFQuality
 from titiler.image.settings import iiif_settings
 from titiler.image.utils import (
@@ -164,7 +166,12 @@ class MetadataFactory(BaseFactory):
             response_class=JSONResponse,
             responses={200: {"description": "Return dataset's basic info."}},
         )
-        def info(src_path: str = Query(description="Dataset URL", alias="url")):
+        def info(
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
+        ):
             """Return Image metadata."""
             with ImageReader(src_path) as dst:
                 return dst.info()
@@ -181,7 +188,10 @@ class MetadataFactory(BaseFactory):
             },
         )
         def statistics(
-            src_path: str = Query(description="Dataset URL", alias="url"),
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
             layer_params: BidxExprParams = Depends(),
             dataset_params: DatasetParams = Depends(),
             image_params: ImageParams = Depends(),
@@ -226,33 +236,48 @@ class LocalTilerFactory(BaseFactory):
         )
         def tilejson(
             request: Request,
-            src_path: str = Query(description="Dataset URL", alias="url"),
-            tile_format: Optional[ImageType] = Query(
-                None, description="Output image type. Default is auto."
-            ),
-            tile_scale: Optional[int] = Query(
-                None, gt=0, lt=4, description="Tile size scale. 1=256x256, 2=512x512..."
-            ),
-            minzoom: Optional[int] = Query(
-                None, description="Overwrite default minzoom."
-            ),
-            maxzoom: Optional[int] = Query(
-                None, description="Overwrite default maxzoom."
-            ),
-            layer_params: BidxExprParams = Depends(),  # noqa
-            dataset_params: DatasetParams = Depends(),  # noqa
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(
-                RescalingParams
-            ),  # noqa
-            color_formula: Optional[str] = Query(
-                None,  # noqa
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),  # noqa
-            add_mask: Optional[bool] = Query(  # noqa
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
+            tile_format: Annotated[
+                Optional[ImageType],
+                Query(description="Output image type. Default is auto."),
+            ] = None,
+            tile_scale: Annotated[
+                Optional[int],
+                Query(
+                    gt=0,
+                    lt=4,
+                    description="Tile size scale. 1=256x256, 2=512x512...",
+                ),
+            ] = None,
+            minzoom: Annotated[
+                Optional[int],
+                Query(description="Overwrite default minzoom."),
+            ] = None,
+            maxzoom: Annotated[
+                Optional[int],
+                Query(description="Overwrite default maxzoom."),
+            ] = None,
+            layer_params: BidxExprParams = Depends(),
+            dataset_params: DatasetParams = Depends(),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """return Tilejson doc."""
             route_params: Dict[str, Any] = {
@@ -296,28 +321,44 @@ class LocalTilerFactory(BaseFactory):
         @self.router.get("/tiles/{z}/{x}/{y}@{scale}x", **img_endpoint_params)
         @self.router.get("/tiles/{z}/{x}/{y}@{scale}x.{format}", **img_endpoint_params)
         def tile(
-            z: int,
-            x: int,
-            y: int,
-            scale: Optional[int] = Query(
-                None, gt=0, lt=4, description="Tile size scale. 1=256x256, 2=512x512..."
-            ),
-            format: ImageType = Query(
-                ImageType.png, description="Output image type. Defaults to PNG."
-            ),
-            src_path: str = Query(description="Dataset URL", alias="url"),
+            z: Annotated[
+                int,
+                Path(description="Identifier (Z) selecting one of the scales."),
+            ],
+            x: Annotated[
+                int,
+                Path(description="Column (X) index of the tile."),
+            ],
+            y: Annotated[
+                int,
+                Path(description="Row (Y) index of the tile."),
+            ],
+            src_path: Annotated[str, Query(description="Dataset URL", alias="url")],
+            scale: Annotated[
+                Optional[conint(gt=0, le=4)], "Tile size scale. 1=256x256, 2=512x512..."
+            ] = None,
+            format: Annotated[
+                ImageType,
+                "Default will be automatically defined if the output image needs a mask (png) or not (jpeg).",
+            ] = None,
             layer_params: BidxExprParams = Depends(),
             dataset_params: DatasetParams = Depends(),
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(RescalingParams),
-            color_formula: Optional[str] = Query(
-                None,
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),
-            add_mask: Optional[bool] = Query(
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """Tile in Local TMS."""
             tilesize = scale * 256 if scale is not None else 256
@@ -359,33 +400,45 @@ class LocalTilerFactory(BaseFactory):
         @self.router.get("/viewer", response_class=HTMLResponse)
         def image_viewer(
             request: Request,
-            src_path: str = Query(description="Dataset URL", alias="url"),  # noqa
-            tile_format: Optional[ImageType] = Query(  # noqa
-                None, description="Output image type. Default is auto."
-            ),
-            tile_scale: Optional[int] = Query(  # noqa
-                None, gt=0, lt=4, description="Tile size scale. 1=256x256, 2=512x512..."
-            ),
-            minzoom: Optional[int] = Query(  # noqa
-                None, description="Overwrite default minzoom."
-            ),
-            maxzoom: Optional[int] = Query(  # noqa
-                None, description="Overwrite default maxzoom."
-            ),
-            layer_params: BidxExprParams = Depends(),  # noqa
-            dataset_params: DatasetParams = Depends(),  # noqa
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(
-                RescalingParams
-            ),  # noqa
-            color_formula: Optional[str] = Query(
-                None,  # noqa
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),  # noqa
-            add_mask: Optional[bool] = Query(  # noqa
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            src_path: Annotated[str, Query(description="Dataset URL", alias="url")],
+            tile_format: Annotated[
+                Optional[ImageType],
+                Query(description="Output image type. Default is auto."),
+            ] = None,
+            tile_scale: Annotated[
+                Optional[int],
+                Query(
+                    gt=0,
+                    lt=4,
+                    description="Tile size scale. 1=256x256, 2=512x512...",
+                ),
+            ] = None,
+            minzoom: Annotated[
+                Optional[int],
+                Query(description="Overwrite default minzoom."),
+            ] = None,
+            maxzoom: Annotated[
+                Optional[int],
+                Query(description="Overwrite default maxzoom."),
+            ] = None,
+            layer_params: BidxExprParams = Depends(),
+            dataset_params: DatasetParams = Depends(),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """Return Simple Image viewer."""
             tilejson_url = self.url_for(request, "tilejson")
@@ -437,7 +490,10 @@ class IIIFFactory(BaseFactory):
         )
         def iiif_info(
             request: Request,
-            identifier: str = Path(description="Dataset URL"),
+            identifier: Annotated[
+                str,
+                Path(description="Dataset URL"),
+            ],
         ):
             """Image Information Request."""
             output_type = accept_media_type(
@@ -466,7 +522,11 @@ class IIIFFactory(BaseFactory):
 
         @self.router.get("/{identifier}", include_in_schema=False)
         def iiif_redirect(
-            request: Request, identifier: str = Path(description="Dataset URL")
+            request: Request,
+            identifier: Annotated[
+                str,
+                Path(description="Dataset URL"),
+            ],
         ):
             """Image Information Request."""
             url = self.url_for(request, "iiif_info", identifier=identifier)
@@ -477,36 +537,59 @@ class IIIFFactory(BaseFactory):
             **img_endpoint_params,
         )
         def iiif_image(  # noqa: C901
-            identifier: str = Query(description="Dataset URL"),
-            region: str = Path(
-                description="The region parameter defines the rectangular portion of the underlying image content to be returned."
-            ),
-            size: str = Path(
-                description="The size parameter specifies the dimensions to which the extracted region, which might be the full image, is to be scaled."
-            ),
-            rotation: str = Path(
-                description="The rotation parameter specifies mirroring and rotation"
-            ),
-            quality: IIIFQuality = Query(
-                IIIFQuality.default,
-                description="The quality parameter determines whether the image is delivered in color, grayscale or black and white.",
-            ),
-            format: IIIFImageFormat = Path(
-                description="The format of the returned image is expressed as a suffix, mirroring common filename extensions, at the end of the URI."
-            ),
+            identifier: Annotated[
+                str,
+                Path(description="Dataset URL"),
+            ],
+            region: Annotated[
+                str,
+                Path(
+                    description="The region parameter defines the rectangular portion of the underlying image content to be returned."
+                ),
+            ],
+            size: Annotated[
+                str,
+                Path(
+                    description="The size parameter specifies the dimensions to which the extracted region, which might be the full image, is to be scaled."
+                ),
+            ],
+            rotation: Annotated[
+                str,
+                Path(
+                    description="The rotation parameter specifies mirroring and rotation"
+                ),
+            ],
+            quality: Annotated[
+                IIIFQuality,
+                Path(
+                    description="The quality parameter determines whether the image is delivered in color, grayscale or black and white.",
+                ),
+            ],
+            format: Annotated[
+                IIIFImageFormat,
+                Path(
+                    description="The format of the returned image is expressed as a suffix, mirroring common filename extensions, at the end of the URI."
+                ),
+            ],
             # TiTiler Extension
             layer_params: BidxExprParams = Depends(),
             dataset_params: DatasetParams = Depends(),
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(RescalingParams),
-            color_formula: Optional[str] = Query(
-                None,
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),
-            add_mask: Optional[bool] = Query(
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """IIIF Image Request.
 
@@ -819,21 +902,28 @@ class IIIFFactory(BaseFactory):
         @self.router.get("/{identifier}/viewer", response_class=HTMLResponse)
         def iiif_viewer(
             request: Request,
-            identifier: str = Path(description="Dataset URL"),
-            layer_params: BidxExprParams = Depends(),  # noqa
-            dataset_params: DatasetParams = Depends(),  # noqa
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(
-                RescalingParams
-            ),  # noqa
-            color_formula: Optional[str] = Query(
-                None,  # noqa
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),  # noqa
-            add_mask: Optional[bool] = Query(  # noqa
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            identifier: Annotated[
+                str,
+                Path(description="Dataset URL"),
+            ],
+            layer_params: BidxExprParams = Depends(),
+            dataset_params: DatasetParams = Depends(),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """Return Simple IIIF viewer."""
             url = self.url_for(request, "iiif_info", identifier=identifier)
@@ -869,10 +959,14 @@ class DeepZoomFactory(BaseFactory):
         @self.router.get("/deepzoom.dzi", response_class=XMLResponse)
         def deepzoom(
             request: Request,
-            src_path: str = Query(description="Dataset URL", alias="url"),
-            format: ImageType = Query(
-                ImageType.png, description="Output image type. Defaults to PNG."
-            ),
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
+            format: Annotated[
+                ImageType,
+                Query(description="Output image type. Defaults to PNG."),
+            ] = ImageType.png,
         ):
             """DeepZoom metadata."""
             with ImageReader(src_path) as dst:
@@ -888,25 +982,35 @@ class DeepZoomFactory(BaseFactory):
         @self.router.get("/{z}/{x}_{y}", **img_endpoint_params)
         @self.router.get("/{z}/{x}_{y}.{format}", **img_endpoint_params)
         def deepzoom_tile(
-            level: int = Path(..., alias="z"),
-            column: int = Path(..., alias="x"),
-            row: int = Path(..., alias="y"),
-            format: ImageType = Query(
-                ImageType.png, description="Output image type. Defaults to PNG."
-            ),
-            src_path: str = Query(description="Dataset URL", alias="url"),
+            level: Annotated[int, Path(alias="z")],
+            column: Annotated[int, Path(alias="x")],
+            row: Annotated[int, Path(alias="y")],
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
+            format: Annotated[
+                ImageType,
+                "Output Image Format",
+            ] = ImageType.png,
             layer_params: BidxExprParams = Depends(),
             dataset_params: DatasetParams = Depends(),
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(RescalingParams),
-            color_formula: Optional[str] = Query(
-                None,
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),
-            add_mask: Optional[bool] = Query(
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """DeepZoom tile."""
             tile_size = 254
@@ -1015,24 +1119,32 @@ class DeepZoomFactory(BaseFactory):
         @self.router.get("/deepzoom.html", response_class=HTMLResponse)
         def deepzoom_viewer(
             request: Request,
-            src_path: str = Query(description="Dataset URL", alias="url"),
-            format: ImageType = Query(
-                ImageType.png, description="Output image type. Defaults to PNG."
-            ),
-            layer_params: BidxExprParams = Depends(),  # noqa
-            dataset_params: DatasetParams = Depends(),  # noqa
-            rescale: Optional[List[Tuple[float, ...]]] = Depends(
-                RescalingParams
-            ),  # noqa
-            color_formula: Optional[str] = Query(  # noqa
-                None,
-                title="Color Formula",
-                description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-            ),
-            colormap: Optional[ColorMapType] = Depends(ColorMapParams),  # noqa
-            add_mask: Optional[bool] = Query(  # noqa
-                None, alias="return_mask", description="Add mask to the output data."
-            ),
+            src_path: Annotated[
+                str,
+                Query(description="Dataset URL", alias="url"),
+            ],
+            format: Annotated[
+                ImageType,
+                "Output Image Format",
+            ] = ImageType.png,
+            layer_params: BidxExprParams = Depends(),
+            dataset_params: DatasetParams = Depends(),
+            rescale: RescalingParams = Depends(),
+            color_formula: Annotated[
+                Optional[str],
+                Query(
+                    title="Color Formula",
+                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
+                ),
+            ] = None,
+            colormap: ColorMapParams = Depends(),
+            add_mask: Annotated[
+                Optional[bool],
+                Query(
+                    alias="return-mask",
+                    description="Add mask to the output data.",
+                ),
+            ] = None,
         ):
             """DeepZoom viewer."""
             route_params: Dict[str, Any] = {
@@ -1074,7 +1186,7 @@ class DeepZoomFactory(BaseFactory):
 class GeoTilerFactory(TilerFactory):
     """Like Tiler Factory but with less endpoints."""
 
-    reader: Type[BaseReader] = GCPSReader
+    reader: Type[BaseReader] = Reader
 
     reader_dependency: Type[DefaultDependency] = GCPSParams
 

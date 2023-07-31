@@ -19,7 +19,21 @@ from titiler.image.factory import (
 )
 from titiler.image.settings import api_settings
 
-app = FastAPI(title=api_settings.name, version=titiler_image_version)
+app = FastAPI(
+    title=api_settings.name,
+    openapi_url="/api",
+    docs_url="/api.html",
+    description="""titiler application to work with non-geo images.
+
+---
+
+**Source Code**: <a href="https://github.com/developmentseed/titiler-image" target="_blank">https://github.com/developmentseed/titiler-image</a>
+
+---
+    """,
+    version=titiler_image_version,
+    root_path=api_settings.root_path,
+)
 
 warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 

@@ -18,7 +18,7 @@
 
 var map = L.map('map', {crs: L.CRS.Simple}).setView(new L.LatLng(0,0), 0);
 
-fetch('{{ tilejson_endpoint }}')
+fetch('{{ tilejson_endpoint|safe }}')
     .then(res => {
         if (res.ok) return res.json()
         throw new Error('Network response was not ok.')

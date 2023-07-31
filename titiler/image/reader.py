@@ -14,14 +14,14 @@ from rasterio.enums import MaskFlags
 from rasterio.io import DatasetReader
 from rasterio.transform import from_gcps
 from rasterio.vrt import WarpedVRT
+from rio_tiler import io
 from rio_tiler.constants import WGS84_CRS
 from rio_tiler.errors import NoOverviewWarning
-from rio_tiler.io import Reader
 from rio_tiler.utils import has_alpha_band
 
 
 @attr.s
-class GCPSReader(Reader):
+class Reader(io.Reader):
     """GCPS + Image Reader"""
 
     gcps: Optional[List[GroundControlPoint]] = attr.ib(default=None)
@@ -35,30 +35,38 @@ class GCPSReader(Reader):
         """Define _kwargs, open dataset and get info."""
         dataset = self._ctx_stack.enter_context(rasterio.open(self.input))
 
-        # External GCPS
+        # when external GCPS we create a VRT
         if self.gcps:
             vrt_xml = vrt_doc(dataset, gcps=self.gcps, gcps_crs=self.gcps_crs)
             dataset = self._ctx_stack.enter_context(rasterio.open(vrt_xml))
 
         vrt_options = {}
-        if dataset.gcps[0]:
-            vrt_options["src_crs"] = dataset.gcps[1]
-            vrt_options["src_transform"] = from_gcps(dataset.gcps[0])
 
+        # Options 1: GCPS (internal or external)
+        if dataset.gcps[0]:
+            vrt_options.update(
+                {
+                    "src_crs": dataset.gcps[1],
+                    "src_transform": from_gcps(dataset.gcps[0]),
+                }
+            )
+
+        # Option 2: Cutline
         if self.cutline:
-            vrt_options["cutline"] = self.cutline
+            vrt_options.update({"cutline": self.cutline})
 
         if vrt_options:
-            nodata = dataset.nodata
-            if nodata is not None:
+            vrt_options.update({"add_alpha": True})
+            if dataset.nodata is not None:
                 vrt_options.update(
-                    {"nodata": nodata, "add_alpha": False, "src_nodata": nodata}
+                    {
+                        "nodata": dataset.nodata,
+                        "add_alpha": False,
+                        "src_nodata": dataset.nodata,
+                    }
                 )
 
-            else:
-                vrt_options["add_alpha"] = True
-
-            if has_alpha_band(dataset):
+            elif has_alpha_band(dataset):
                 vrt_options.update({"add_alpha": False})
 
             self.dataset = self._ctx_stack.enter_context(
@@ -114,10 +122,11 @@ def vrt_doc(  # noqa: C901
             v.attrib["Key"] = key
             v.text = str(value)
 
-    srs = ET.SubElement(vrtdataset, "SRS")
-    srs.text = src_dataset.crs.wkt if src_dataset.crs else ""
-    geotransform = ET.SubElement(vrtdataset, "GeoTransform")
-    geotransform.text = ",".join([str(v) for v in src_dataset.transform.to_gdal()])
+    if src_dataset.crs:
+        srs = ET.SubElement(vrtdataset, "SRS")
+        srs.text = src_dataset.crs.wkt if src_dataset.crs else ""
+        geotransform = ET.SubElement(vrtdataset, "GeoTransform")
+        geotransform.text = ",".join([str(v) for v in src_dataset.transform.to_gdal()])
 
     nodata_value = src_dataset.nodata
 

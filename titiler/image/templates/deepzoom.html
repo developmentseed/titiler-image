@@ -137,7 +137,7 @@ var map = L.map('map', {
 });
 
 L.tileLayer.deepzoom(
-	"{{ endpoint }}",
+	"{{ endpoint|safe }}",
 	{
 		width: {{ width }},
 		height: {{ height }}

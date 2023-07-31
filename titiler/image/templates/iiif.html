@@ -22,7 +22,7 @@ var map = L.map('map', {
   zoom: 0
 });
 
-L.tileLayer.iiif('{{ info_endpoint }}').addTo(map);
+L.tileLayer.iiif('{{ info_endpoint|safe }}').addTo(map);
         </script>
     </body>
 </html>

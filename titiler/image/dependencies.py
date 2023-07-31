@@ -10,33 +10,30 @@ from cachetools import TTLCache, cached
 from fastapi import HTTPException, Query
 from geojson_pydantic import MultiPolygon, Polygon
 from rasterio.control import GroundControlPoint
-from rasterio.enums import Resampling
+from rio_tiler.types import RIOResampling
+from typing_extensions import Annotated
 
 from titiler.core.dependencies import DefaultDependency
-
-ResamplingName = Enum(  # type: ignore
-    "ResamplingName", [(r.name, r.name) for r in Resampling]
-)
 
 
 @dataclass
 class DatasetParams(DefaultDependency):
     """Dataset Optional parameters."""
 
-    unscale: Optional[bool] = Query(
-        False,
-        title="Apply internal Scale/Offset",
-        description="Apply internal Scale/Offset",
-    )
-    resampling_method: ResamplingName = Query(
-        ResamplingName.nearest,  # type: ignore
-        alias="resampling",
-        description="Resampling method.",
-    )
-
-    def __post_init__(self):
-        """Post Init."""
-        self.resampling_method = self.resampling_method.value  # type: ignore
+    unscale: Annotated[
+        Optional[bool],
+        Query(
+            title="Apply internal Scale/Offset",
+            description="Apply internal Scale/Offset",
+        ),
+    ] = False
+    resampling_method: Annotated[
+        RIOResampling,
+        Query(
+            alias="resampling",
+            description="Resampling method.",
+        ),
+    ] = "nearest"
 
 
 @cached(TTLCache(maxsize=512, ttl=3600))
@@ -98,24 +95,28 @@ class GCPSParams(DefaultDependency):
 
     def __init__(
         self,
-        gcps: Optional[List[str]] = Query(
-            None,
-            title="Ground Control Points",
-            description="Ground Control Points in form of `row (y), col (x), lon, lat, alt`",
-        ),
-        gcps_file: Optional[str] = Query(
-            None,
-            title="Ground Control Points GeoJSON path",
-        ),
-        cutline: Optional[str] = Query(
-            None,
-            title="WKT Image Cutline (equivalent of the SVG Selector)",
-            description="WKT Polygon or MultiPolygon.",
-        ),
-        cutline_file: Optional[str] = Query(
-            None,
-            title="GeoJSON file for cutline",
-        ),
+        gcps: Annotated[
+            Optional[List[str]],
+            Query(
+                title="Ground Control Points",
+                description="Ground Control Points in form of `row (y), col (x), lon, lat, alt`",
+            ),
+        ] = None,
+        gcps_file: Annotated[
+            Optional[str],
+            Query(title="Ground Control Points GeoJSON path"),
+        ] = None,
+        cutline: Annotated[
+            Optional[str],
+            Query(
+                title="WKT Image Cutline (equivalent of the SVG Selector)",
+                description="WKT Polygon or MultiPolygon.",
+            ),
+        ] = None,
+        cutline_file: Annotated[
+            Optional[str],
+            Query(title="GeoJSON file for cutline"),
+        ] = None,
     ):
         """Initialize GCPSParams and Cutline
 
