@@ -45,6 +45,9 @@ def _get_sizes(
 
 def rotate(img: ImageData, angle: float, expand: bool = False, mirrored: bool = False):
     """Rotate Image."""
+    if angle == 0:
+        return img
+
     rotated_affine = Affine.rotation(angle, (img.width // 2, img.height // 2))
 
     nw = img.width
@@ -67,9 +70,9 @@ def rotate(img: ImageData, angle: float, expand: bool = False, mirrored: bool = 
         )
 
     # Rotate the data
-    data = numpy.zeros((img.count, nh, nw), dtype=img.data.dtype)
+    data = numpy.zeros((img.count, nh, nw), dtype=img.array.dtype)
     _ = reproject(
-        numpy.flip(img.data, axis=2) if mirrored else img.data,
+        numpy.flip(img.array.data, axis=2) if mirrored else img.array.data,
         data,
         src_crs="epsg:4326",  # Fake CRS
         src_transform=Affine.identity(),
@@ -78,19 +81,19 @@ def rotate(img: ImageData, angle: float, expand: bool = False, mirrored: bool = 
     )
 
     # Rotate the mask
-    mask = numpy.zeros((nh, nw), dtype=img.mask.dtype)
+    mask = numpy.zeros((img.count, nh, nw), dtype="uint8") + 1
     _ = reproject(
-        numpy.flip(img.mask, axis=1) if mirrored else img.mask,
+        numpy.flip(img.array.mask * 1, axis=1) if mirrored else img.array.mask * 1,
         mask,
         src_crs="epsg:4326",  # Fake CRS
         src_transform=Affine.identity(),
         dst_crs="epsg:4326",  # Fake CRS
         dst_transform=rotated_affine,
+        dst_nodata=1,  # 1=True -> means masked
     )
 
     return ImageData(
-        data,
-        mask,
+        numpy.ma.MaskedArray(data, mask=mask.astype("bool")),
         assets=img.assets,
         metadata=img.metadata,
         band_names=img.band_names,

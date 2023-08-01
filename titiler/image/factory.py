@@ -475,7 +475,7 @@ class IIIFFactory(BaseFactory):
         """Register IIIF Image API routes."""
 
         @self.router.get(
-            "/{identifier}/info.json",
+            "/{identifier:path}/info.json",
             response_model=iiifInfo,
             response_model_exclude_none=True,
             responses={
@@ -492,7 +492,7 @@ class IIIFFactory(BaseFactory):
             request: Request,
             identifier: Annotated[
                 str,
-                Path(description="Dataset URL"),
+                Path(description="The identifier of the requested image."),
             ],
         ):
             """Image Information Request."""
@@ -500,8 +500,11 @@ class IIIFFactory(BaseFactory):
                 request.headers.get("accept", ""),
                 ["application/json", "application/ld+json"],
             )
-
-            url_path = self.url_for(request, "iiif_redirect", identifier=identifier)
+            url_path = self.url_for(
+                request,
+                "iiif_redirect",
+                identifier=urllib.parse.quote_plus(identifier, safe=""),
+            )
 
             identifier = urllib.parse.unquote(identifier)
             with ImageReader(identifier) as dst:
@@ -509,37 +512,27 @@ class IIIFFactory(BaseFactory):
                 # Set Sizes
                 # Set Tiles (using min/max zooms)
                 info = iiifInfo(
-                    id=url_path, width=dst.dataset.width, height=dst.dataset.height
+                    id=url_path,
+                    width=dst.dataset.width,
+                    height=dst.dataset.height,
                 )
 
                 if output_type == "application/ld+json":
                     return StreamingResponse(
-                        iter((info.json(exclude_none=True) + "\n",)),
+                        iter((info.model_dump_json(exclude_none=True) + "\n",)),
                         media_type='application/ld+json;profile="http://iiif.io/api/image/3/context.json"',
                     )
 
             return info
 
-        @self.router.get("/{identifier}", include_in_schema=False)
-        def iiif_redirect(
-            request: Request,
-            identifier: Annotated[
-                str,
-                Path(description="Dataset URL"),
-            ],
-        ):
-            """Image Information Request."""
-            url = self.url_for(request, "iiif_info", identifier=identifier)
-            return RedirectResponse(url)
-
         @self.router.get(
-            "/{identifier}/{region}/{size}/{rotation}/{quality}.{format}",
+            "/{identifier:path}/{region}/{size}/{rotation}/{quality}.{format}",
             **img_endpoint_params,
         )
         def iiif_image(  # noqa: C901
             identifier: Annotated[
                 str,
-                Path(description="Dataset URL"),
+                Path(description="The identifier of the requested image."),
             ],
             region: Annotated[
                 str,
@@ -597,7 +590,6 @@ class IIIFFactory(BaseFactory):
 
             """
             identifier = urllib.parse.unquote(identifier)
-
             with ImageReader(identifier) as dst:
                 dst_width = dst.dataset.width
                 dst_height = dst.dataset.height
@@ -659,7 +651,13 @@ class IIIFFactory(BaseFactory):
                     w = dst_width - x if w + x > dst_width else w
                     h = dst_height - y if h + y > dst_height else h
 
-                    window = windows.Window(col_off=x, row_off=y, width=w, height=h)
+                    try:
+                        window = windows.Window(col_off=x, row_off=y, width=w, height=h)
+                    except ValueError as e:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Invalid Region parameter: {region}.",
+                        ) from e
 
                 else:
                     raise HTTPException(
@@ -896,6 +894,21 @@ class IIIFFactory(BaseFactory):
             )
             return Response(content, media_type=format.mediatype)
 
+        @self.router.get("/{identifier:path}", include_in_schema=False)
+        def iiif_redirect(
+            request: Request,
+            identifier: Annotated[
+                str, Path(description="The identifier of the requested image.")
+            ],
+        ):
+            """Image Information Request."""
+            url = self.url_for(
+                request,
+                "iiif_info",
+                identifier=identifier,
+            )
+            return RedirectResponse(url)
+
     def register_viewer(self):
         """Register Viewer route."""
 
@@ -903,8 +916,7 @@ class IIIFFactory(BaseFactory):
         def iiif_viewer(
             request: Request,
             identifier: Annotated[
-                str,
-                Path(description="Dataset URL"),
+                str, Path(description="The identifier of the requested image.")
             ],
             layer_params: BidxExprParams = Depends(),
             dataset_params: DatasetParams = Depends(),
