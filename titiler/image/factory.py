@@ -4,7 +4,7 @@ import abc
 import math
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
@@ -42,7 +42,7 @@ from titiler.core.routing import EndpointScope
 from titiler.image.dependencies import DatasetParams, GCPSParams
 from titiler.image.models import iiifInfo
 from titiler.image.reader import Reader
-from titiler.image.resources.enums import IIIFImageFormat, IIIFQuality
+from titiler.image.resources.enums import IIIFImageFormat
 from titiler.image.settings import iiif_settings
 from titiler.image.utils import (
     _get_sizes,
@@ -549,11 +549,11 @@ class IIIFFactory(BaseFactory):
             rotation: Annotated[
                 str,
                 Path(
-                    description="The rotation parameter specifies mirroring and rotation"
+                    description="The rotation parameter specifies mirroring and rotation",
                 ),
             ],
             quality: Annotated[
-                IIIFQuality,
+                Literal["color", "gray", "bitonal", "default"],
                 Path(
                     description="The quality parameter determines whether the image is delivered in color, grayscale or black and white.",
                 ),
@@ -595,7 +595,7 @@ class IIIFFactory(BaseFactory):
                 dst_height = dst.dataset.height
 
                 #################################################################################
-                # Region
+                # REGION
                 # full, square, x,y,w,h, pct:x,y,w,h
                 #################################################################################
                 window = windows.Window(
@@ -675,7 +675,7 @@ class IIIFFactory(BaseFactory):
                     )
 
                 #################################################################################
-                # Size
+                # SIZE
                 # Formats are: w, ,h w,h pct:p !w,h full max ^w, ^,h ^w,h
                 #################################################################################
                 out_width, out_height = window.width, window.height
@@ -696,14 +696,14 @@ class IIIFFactory(BaseFactory):
                             if iiif_settings.max_width
                             else out_width
                         )
-                        out_height = math.ceil(out_width / aspect_ratio)
+                        out_height = round(out_width / aspect_ratio)
                     else:
                         out_height = (
                             max(out_height, iiif_settings.max_height)
                             if iiif_settings.max_height
                             else out_height
                         )
-                        out_width = math.ceil(aspect_ratio * out_height)
+                        out_width = round(aspect_ratio * out_height)
 
                 elif size.startswith("pct:"):
                     # pct:n: The width and height of the returned image is scaled to n percent of the width and height of the extracted region.
@@ -738,14 +738,14 @@ class IIIFFactory(BaseFactory):
                         # ^!w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio.
                         # The returned image must be as large as possible but not larger than w, h, or server-imposed limits.
                         max_width, max_height = list(
-                            map(int, size.replace("!^", "").split(","))
+                            map(int, size.replace("^!", "").split(","))
                         )
                         if aspect_ratio > 1:
                             out_width = max_width
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
                         else:
                             out_height = max_height
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                     elif size.startswith("!"):
                         # !w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio.
@@ -756,10 +756,10 @@ class IIIFFactory(BaseFactory):
 
                         if aspect_ratio > 1:
                             out_width = max_width
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
                         else:
                             out_height = max_height
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                         if out_width > window.width or out_height > window.height:
                             raise HTTPException(
@@ -774,12 +774,12 @@ class IIIFFactory(BaseFactory):
                             # ^w,: The extracted region should be scaled so that the width of the returned image is exactly equal to w.
                             # If w is greater than the pixel width of the extracted region, the extracted region is upscaled.
                             out_width = int(sizes[0])
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
 
-                        elif size.startswith(","):
+                        elif size.startswith("^,"):
                             # ^,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h. If h is greater than the pixel height of the extracted region, the extracted region is upscaled.
                             out_height = int(sizes[1])
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                         elif sizes[0] and sizes[1]:
                             # ^w,h:	The width and height of the returned image are exactly w and h.
@@ -796,7 +796,7 @@ class IIIFFactory(BaseFactory):
                                 status_code=400,
                                 detail=f"Invalid 'w' parameter: {out_width} (greater than region width {window.width}).",
                             )
-                        out_height = math.ceil(out_width / aspect_ratio)
+                        out_height = round(out_width / aspect_ratio)
 
                     elif size.startswith(","):
                         # ,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h.
@@ -807,7 +807,7 @@ class IIIFFactory(BaseFactory):
                                 status_code=400,
                                 detail=f"Invalid 'h' parameter: {out_height} (greater than region height {window.height}).",
                             )
-                        out_width = math.ceil(aspect_ratio * out_height)
+                        out_width = round(aspect_ratio * out_height)
 
                     elif sizes[0] and sizes[1]:
                         # w,h: The width and height of the returned image are exactly w and h.
@@ -854,7 +854,7 @@ class IIIFFactory(BaseFactory):
                 dst_colormap = getattr(dst, "colormap", None)
 
             #################################################################################
-            # Rotation
+            # ROTATION
             # Formats are: n, !n
             #################################################################################
             try:
@@ -876,11 +876,15 @@ class IIIFFactory(BaseFactory):
             if color_formula:
                 image.apply_color_formula(color_formula)
 
-            if quality == IIIFQuality.gray:
+            #################################################################################
+            # QUALITY
+            # one of default, color, gray or bitonal
+            #################################################################################
+            if quality == "gray":
                 colormap = dst_colormap = None
                 image = image_to_grayscale(image)
 
-            if quality == IIIFQuality.bitonal:
+            elif quality == "bitonal":
                 colormap = dst_colormap = None
                 image = image_to_bitonal(image)
 

@@ -25,6 +25,8 @@ def parse_img(content: bytes) -> Dict[Any, Any]:
 @pytest.fixture(autouse=True)
 def app(monkeypatch):
     """Create app."""
+    monkeypatch.setenv("TITILER_IMAGE_IIIF_MAX_WIDTH", "2000")
+
     from titiler.image.main import app
 
     with TestClient(app) as app:
