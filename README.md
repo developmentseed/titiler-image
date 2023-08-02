@@ -93,12 +93,14 @@ app.include_router(meta.router)
 
 ### IIIFFactory
 
+Specification: https://iiif.io/api/image/3.0/
+
 #### Endpoints
 
 - `/{identifier}/info.json`: IIIF Image Information Request
-- `/{identifier}`: Redirect do the Image Information Request endpoint
 - `/{identifier}/{region}/{size}/{rotation}/{quality}.{format}`: IIIF Image Request
-- `/{identifier}/viewer`: Simple IIIF viewer (not part of the IIIF specification)
+- `/{identifier}`: Redirect do the Image Information Request endpoint or return a simple IIIF viewer (based on headers `Accept`` value)
+
 
 ```python
 from fastapi import FastAPI

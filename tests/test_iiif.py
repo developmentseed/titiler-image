@@ -15,9 +15,12 @@ def test_iiif_information_endpoints(app):
     identifier = urllib.parse.quote_plus(boston_jpeg, safe="")
 
     # # Make sure we got redirected
-    # response = app.get(f"/iiif/{identifier}", follow_redirects=True)
+    # response = app.get(
+    #     f"/iiif/{identifier}",
+    #     follow_redirects=True,
+    #     headers={"accept": "application/json"},
+    # )
     # assert response.history
-
     # assert response.status_code == 200
     # assert response.headers["content-type"] == "application/json"
     # bodyr = response.json()
@@ -26,6 +29,20 @@ def test_iiif_information_endpoints(app):
     response = app.get(f"/iiif/{identifier}/info.json")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
+    body = response.json()
+    assert body["type"] == "ImageService3"
+    assert body["width"] == 1000
+    assert body["height"] == 695
+
+    response = app.get(
+        f"/iiif/{identifier}/info.json",
+        headers={"accept": "application/ld+json"},
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers["content-type"]
+        == 'application/ld+json;profile="http://iiif.io/api/image/3/context.json"'
+    )
     body = response.json()
     assert body["type"] == "ImageService3"
     assert body["width"] == 1000

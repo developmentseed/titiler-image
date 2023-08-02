@@ -460,16 +460,14 @@ class LocalTilerFactory(BaseFactory):
 ###############################################################################
 @dataclass
 class IIIFFactory(BaseFactory):
-    """IIIF Factory."""
+    """IIIF Factory.
 
-    add_viewer: bool = True
+    Specification: https://iiif.io/api/image/3.0/
+    """
 
     def register_routes(self):
         """Register Routes."""
         self.register_image_api()
-
-        if self.add_viewer:
-            self.register_viewer()
 
     def register_image_api(self):  # noqa: C901
         """Register IIIF Image API routes."""
@@ -502,7 +500,7 @@ class IIIFFactory(BaseFactory):
             )
             url_path = self.url_for(
                 request,
-                "iiif_redirect",
+                "iiif_baseuri",
                 identifier=urllib.parse.quote_plus(identifier, safe=""),
             )
 
@@ -898,59 +896,42 @@ class IIIFFactory(BaseFactory):
             )
             return Response(content, media_type=format.mediatype)
 
-        @self.router.get("/{identifier:path}", include_in_schema=False)
-        def iiif_redirect(
+        @self.router.get(
+            "/{identifier:path}",
+            response_class=RedirectResponse,
+            include_in_schema=False,
+        )
+        def iiif_baseuri(
             request: Request,
             identifier: Annotated[
                 str, Path(description="The identifier of the requested image.")
             ],
         ):
-            """Image Information Request."""
-            url = self.url_for(
-                request,
-                "iiif_info",
-                identifier=identifier,
-            )
-            return RedirectResponse(url)
+            """Return Simple IIIF viewer.
 
-    def register_viewer(self):
-        """Register Viewer route."""
+            ref: https://iiif.io/api/image/3.0/#2-uri-syntax
+            When the base URI is dereferenced, the interaction should result in the image information document.
+            It is recommended that the response be a 303 status redirection to the image information document’s URI.
+            Implementations may also exhibit other behavior for the base URI beyond the scope of this specification
+            in response to HTTP request headers and methods.
 
-        @self.router.get("/{identifier}/viewer", response_class=HTMLResponse)
-        def iiif_viewer(
-            request: Request,
-            identifier: Annotated[
-                str, Path(description="The identifier of the requested image.")
-            ],
-            layer_params: BidxExprParams = Depends(),
-            dataset_params: DatasetParams = Depends(),
-            rescale: RescalingParams = Depends(),
-            color_formula: Annotated[
-                Optional[str],
-                Query(
-                    title="Color Formula",
-                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-                ),
-            ] = None,
-            colormap: ColorMapParams = Depends(),
-            add_mask: Annotated[
-                Optional[bool],
-                Query(
-                    alias="return-mask",
-                    description="Add mask to the output data.",
-                ),
-            ] = None,
-        ):
-            """Return Simple IIIF viewer."""
+            """
             url = self.url_for(request, "iiif_info", identifier=identifier)
-            return templates.TemplateResponse(
-                name="iiif.html",
-                context={
-                    "request": request,
-                    "info_endpoint": url,
-                },
-                media_type=MediaType.html.value,
+            output_type = accept_media_type(
+                request.headers.get("accept", ""),
+                ["text/html"],
             )
+            if output_type:
+                return templates.TemplateResponse(
+                    name="iiif.html",
+                    context={
+                        "request": request,
+                        "info_endpoint": url,
+                    },
+                    media_type=MediaType.html.value,
+                )
+
+            return RedirectResponse(url)
 
 
 ###############################################################################
