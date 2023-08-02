@@ -4,7 +4,7 @@ import abc
 import math
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
@@ -42,7 +42,7 @@ from titiler.core.routing import EndpointScope
 from titiler.image.dependencies import DatasetParams, GCPSParams
 from titiler.image.models import iiifInfo
 from titiler.image.reader import Reader
-from titiler.image.resources.enums import IIIFImageFormat, IIIFQuality
+from titiler.image.resources.enums import IIIFImageFormat
 from titiler.image.settings import iiif_settings
 from titiler.image.utils import (
     _get_sizes,
@@ -460,22 +460,20 @@ class LocalTilerFactory(BaseFactory):
 ###############################################################################
 @dataclass
 class IIIFFactory(BaseFactory):
-    """IIIF Factory."""
+    """IIIF Factory.
 
-    add_viewer: bool = True
+    Specification: https://iiif.io/api/image/3.0/
+    """
 
     def register_routes(self):
         """Register Routes."""
         self.register_image_api()
 
-        if self.add_viewer:
-            self.register_viewer()
-
     def register_image_api(self):  # noqa: C901
         """Register IIIF Image API routes."""
 
         @self.router.get(
-            "/{identifier}/info.json",
+            "/{identifier:path}/info.json",
             response_model=iiifInfo,
             response_model_exclude_none=True,
             responses={
@@ -492,7 +490,7 @@ class IIIFFactory(BaseFactory):
             request: Request,
             identifier: Annotated[
                 str,
-                Path(description="Dataset URL"),
+                Path(description="The identifier of the requested image."),
             ],
         ):
             """Image Information Request."""
@@ -500,8 +498,11 @@ class IIIFFactory(BaseFactory):
                 request.headers.get("accept", ""),
                 ["application/json", "application/ld+json"],
             )
-
-            url_path = self.url_for(request, "iiif_redirect", identifier=identifier)
+            url_path = self.url_for(
+                request,
+                "iiif_baseuri",
+                identifier=urllib.parse.quote_plus(identifier, safe=""),
+            )
 
             identifier = urllib.parse.unquote(identifier)
             with ImageReader(identifier) as dst:
@@ -509,37 +510,27 @@ class IIIFFactory(BaseFactory):
                 # Set Sizes
                 # Set Tiles (using min/max zooms)
                 info = iiifInfo(
-                    id=url_path, width=dst.dataset.width, height=dst.dataset.height
+                    id=url_path,
+                    width=dst.dataset.width,
+                    height=dst.dataset.height,
                 )
 
                 if output_type == "application/ld+json":
                     return StreamingResponse(
-                        iter((info.json(exclude_none=True) + "\n",)),
+                        iter((info.model_dump_json(exclude_none=True) + "\n",)),
                         media_type='application/ld+json;profile="http://iiif.io/api/image/3/context.json"',
                     )
 
             return info
 
-        @self.router.get("/{identifier}", include_in_schema=False)
-        def iiif_redirect(
-            request: Request,
-            identifier: Annotated[
-                str,
-                Path(description="Dataset URL"),
-            ],
-        ):
-            """Image Information Request."""
-            url = self.url_for(request, "iiif_info", identifier=identifier)
-            return RedirectResponse(url)
-
         @self.router.get(
-            "/{identifier}/{region}/{size}/{rotation}/{quality}.{format}",
+            "/{identifier:path}/{region}/{size}/{rotation}/{quality}.{format}",
             **img_endpoint_params,
         )
         def iiif_image(  # noqa: C901
             identifier: Annotated[
                 str,
-                Path(description="Dataset URL"),
+                Path(description="The identifier of the requested image."),
             ],
             region: Annotated[
                 str,
@@ -556,11 +547,11 @@ class IIIFFactory(BaseFactory):
             rotation: Annotated[
                 str,
                 Path(
-                    description="The rotation parameter specifies mirroring and rotation"
+                    description="The rotation parameter specifies mirroring and rotation",
                 ),
             ],
             quality: Annotated[
-                IIIFQuality,
+                Literal["color", "gray", "bitonal", "default"],
                 Path(
                     description="The quality parameter determines whether the image is delivered in color, grayscale or black and white.",
                 ),
@@ -597,13 +588,12 @@ class IIIFFactory(BaseFactory):
 
             """
             identifier = urllib.parse.unquote(identifier)
-
             with ImageReader(identifier) as dst:
                 dst_width = dst.dataset.width
                 dst_height = dst.dataset.height
 
                 #################################################################################
-                # Region
+                # REGION
                 # full, square, x,y,w,h, pct:x,y,w,h
                 #################################################################################
                 window = windows.Window(
@@ -659,7 +649,13 @@ class IIIFFactory(BaseFactory):
                     w = dst_width - x if w + x > dst_width else w
                     h = dst_height - y if h + y > dst_height else h
 
-                    window = windows.Window(col_off=x, row_off=y, width=w, height=h)
+                    try:
+                        window = windows.Window(col_off=x, row_off=y, width=w, height=h)
+                    except ValueError as e:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Invalid Region parameter: {region}.",
+                        ) from e
 
                 else:
                     raise HTTPException(
@@ -677,7 +673,7 @@ class IIIFFactory(BaseFactory):
                     )
 
                 #################################################################################
-                # Size
+                # SIZE
                 # Formats are: w, ,h w,h pct:p !w,h full max ^w, ^,h ^w,h
                 #################################################################################
                 out_width, out_height = window.width, window.height
@@ -698,14 +694,14 @@ class IIIFFactory(BaseFactory):
                             if iiif_settings.max_width
                             else out_width
                         )
-                        out_height = math.ceil(out_width / aspect_ratio)
+                        out_height = round(out_width / aspect_ratio)
                     else:
                         out_height = (
                             max(out_height, iiif_settings.max_height)
                             if iiif_settings.max_height
                             else out_height
                         )
-                        out_width = math.ceil(aspect_ratio * out_height)
+                        out_width = round(aspect_ratio * out_height)
 
                 elif size.startswith("pct:"):
                     # pct:n: The width and height of the returned image is scaled to n percent of the width and height of the extracted region.
@@ -740,14 +736,14 @@ class IIIFFactory(BaseFactory):
                         # ^!w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio.
                         # The returned image must be as large as possible but not larger than w, h, or server-imposed limits.
                         max_width, max_height = list(
-                            map(int, size.replace("!^", "").split(","))
+                            map(int, size.replace("^!", "").split(","))
                         )
                         if aspect_ratio > 1:
                             out_width = max_width
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
                         else:
                             out_height = max_height
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                     elif size.startswith("!"):
                         # !w,h	The extracted region is scaled so that the width and height of the returned image are not greater than w and h, while maintaining the aspect ratio.
@@ -758,10 +754,10 @@ class IIIFFactory(BaseFactory):
 
                         if aspect_ratio > 1:
                             out_width = max_width
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
                         else:
                             out_height = max_height
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                         if out_width > window.width or out_height > window.height:
                             raise HTTPException(
@@ -776,12 +772,12 @@ class IIIFFactory(BaseFactory):
                             # ^w,: The extracted region should be scaled so that the width of the returned image is exactly equal to w.
                             # If w is greater than the pixel width of the extracted region, the extracted region is upscaled.
                             out_width = int(sizes[0])
-                            out_height = math.ceil(out_width / aspect_ratio)
+                            out_height = round(out_width / aspect_ratio)
 
-                        elif size.startswith(","):
+                        elif size.startswith("^,"):
                             # ^,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h. If h is greater than the pixel height of the extracted region, the extracted region is upscaled.
                             out_height = int(sizes[1])
-                            out_width = math.ceil(aspect_ratio * out_height)
+                            out_width = round(aspect_ratio * out_height)
 
                         elif sizes[0] and sizes[1]:
                             # ^w,h:	The width and height of the returned image are exactly w and h.
@@ -798,7 +794,7 @@ class IIIFFactory(BaseFactory):
                                 status_code=400,
                                 detail=f"Invalid 'w' parameter: {out_width} (greater than region width {window.width}).",
                             )
-                        out_height = math.ceil(out_width / aspect_ratio)
+                        out_height = round(out_width / aspect_ratio)
 
                     elif size.startswith(","):
                         # ,h: The extracted region should be scaled so that the height of the returned image is exactly equal to h.
@@ -809,7 +805,7 @@ class IIIFFactory(BaseFactory):
                                 status_code=400,
                                 detail=f"Invalid 'h' parameter: {out_height} (greater than region height {window.height}).",
                             )
-                        out_width = math.ceil(aspect_ratio * out_height)
+                        out_width = round(aspect_ratio * out_height)
 
                     elif sizes[0] and sizes[1]:
                         # w,h: The width and height of the returned image are exactly w and h.
@@ -856,7 +852,7 @@ class IIIFFactory(BaseFactory):
                 dst_colormap = getattr(dst, "colormap", None)
 
             #################################################################################
-            # Rotation
+            # ROTATION
             # Formats are: n, !n
             #################################################################################
             try:
@@ -878,11 +874,15 @@ class IIIFFactory(BaseFactory):
             if color_formula:
                 image.apply_color_formula(color_formula)
 
-            if quality == IIIFQuality.gray:
+            #################################################################################
+            # QUALITY
+            # one of default, color, gray or bitonal
+            #################################################################################
+            if quality == "gray":
                 colormap = dst_colormap = None
                 image = image_to_grayscale(image)
 
-            if quality == IIIFQuality.bitonal:
+            elif quality == "bitonal":
                 colormap = dst_colormap = None
                 image = image_to_bitonal(image)
 
@@ -896,45 +896,42 @@ class IIIFFactory(BaseFactory):
             )
             return Response(content, media_type=format.mediatype)
 
-    def register_viewer(self):
-        """Register Viewer route."""
-
-        @self.router.get("/{identifier}/viewer", response_class=HTMLResponse)
-        def iiif_viewer(
+        @self.router.get(
+            "/{identifier:path}",
+            response_class=RedirectResponse,
+            include_in_schema=False,
+        )
+        def iiif_baseuri(
             request: Request,
             identifier: Annotated[
-                str,
-                Path(description="Dataset URL"),
+                str, Path(description="The identifier of the requested image.")
             ],
-            layer_params: BidxExprParams = Depends(),
-            dataset_params: DatasetParams = Depends(),
-            rescale: RescalingParams = Depends(),
-            color_formula: Annotated[
-                Optional[str],
-                Query(
-                    title="Color Formula",
-                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-                ),
-            ] = None,
-            colormap: ColorMapParams = Depends(),
-            add_mask: Annotated[
-                Optional[bool],
-                Query(
-                    alias="return-mask",
-                    description="Add mask to the output data.",
-                ),
-            ] = None,
         ):
-            """Return Simple IIIF viewer."""
+            """Return Simple IIIF viewer.
+
+            ref: https://iiif.io/api/image/3.0/#2-uri-syntax
+            When the base URI is dereferenced, the interaction should result in the image information document.
+            It is recommended that the response be a 303 status redirection to the image information document’s URI.
+            Implementations may also exhibit other behavior for the base URI beyond the scope of this specification
+            in response to HTTP request headers and methods.
+
+            """
             url = self.url_for(request, "iiif_info", identifier=identifier)
-            return templates.TemplateResponse(
-                name="iiif.html",
-                context={
-                    "request": request,
-                    "info_endpoint": url,
-                },
-                media_type=MediaType.html.value,
+            output_type = accept_media_type(
+                request.headers.get("accept", ""),
+                ["text/html"],
             )
+            if output_type:
+                return templates.TemplateResponse(
+                    name="iiif.html",
+                    context={
+                        "request": request,
+                        "info_endpoint": url,
+                    },
+                    media_type=MediaType.html.value,
+                )
+
+            return RedirectResponse(url)
 
 
 ###############################################################################

@@ -8,22 +8,6 @@ from rio_tiler.profiles import img_profiles
 from titiler.core.resources.enums import ImageDriver, MediaType
 
 
-class IIIFQuality(str, Enum):
-    """Image quality.
-
-    ref: https://iiif.io/api/image/3.0/#quality
-    """
-
-    # The image is returned with all of its color information.
-    color = "color"
-    # The image is returned in grayscale, where each pixel is black, white or any shade of gray in between.
-    gray = "gray"
-    # The image returned is bitonal, where each pixel is either black or white.
-    bitonal = "bitonal"
-    # The image is returned using the server’s default quality (e.g. color, gray or bitonal) for the image.
-    default = "default"
-
-
 class IIIFImageFormat(str, Enum):
     """Available Output image type."""
 

@@ -2,6 +2,7 @@
 import warnings
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from rasterio.errors import NotGeoreferencedWarning, RasterioIOError
 from starlette import status
 from starlette.middleware.cors import CORSMiddleware
@@ -40,6 +41,7 @@ warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 DEFAULT_STATUS_CODES.update(
     {
         RasterioIOError: status.HTTP_404_NOT_FOUND,
+        RequestValidationError: status.HTTP_400_BAD_REQUEST,
     }
 )
 

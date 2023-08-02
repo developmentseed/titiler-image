@@ -4,6 +4,7 @@ import json
 import os
 from typing import List
 
+import numpy
 import rasterio
 from rasterio.control import GroundControlPoint
 
@@ -73,3 +74,41 @@ def test_reader_external_gcps():
 
             # The topleft corner should be masked
             assert src.preview(indexes=1).array.mask[0, 0, 0]
+
+
+def test_reader_internal_external_gcps():
+    """Make sure we get the same result with internal/external GCPS."""
+    with Reader(cog_gcps) as src_gcps:
+        with Reader(cog_no_gcps, gcps=get_gcps(cog_geojson)) as src_no_gcps:
+            assert src_gcps.dataset.meta == src_no_gcps.dataset.meta
+
+
+def test_reader_cutline():
+    """Make sure cutline is applied."""
+    with Reader(boston_tif, gcps=get_gcps(boston_geojson)) as src:
+        im = src.tile(79285, 97003, 18)
+        assert not im.array.mask[0, 190, 68]
+
+    with rasterio.open(boston_tif) as src:
+        w = src.width
+        h = src.height
+
+        # buffer
+        b = 100
+        cutline = (
+            f"POLYGON (({b} {b}, {w - b} {b}, {w - b} {h - b}, {b} {h - b}, {b} {b}))"
+        )
+
+    with Reader(
+        boston_tif,
+        gcps=get_gcps(boston_geojson),
+        cutline=cutline,
+    ) as src:
+        im_cut = src.tile(79285, 97003, 18)
+        assert im_cut.array.mask[0, 190, 68]
+
+    with numpy.testing.assert_raises(AssertionError):
+        numpy.testing.assert_array_equal(im_cut.array.mask, im.array.mask)
+
+    with numpy.testing.assert_raises(AssertionError):
+        numpy.testing.assert_array_equal(im_cut.array.data, im.array.data)
