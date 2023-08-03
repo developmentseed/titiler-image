@@ -91,6 +91,7 @@ class GCPSParams(DefaultDependency):
 
     gcps: Optional[List[GroundControlPoint]] = None
     cutline: Optional[str] = None
+    gcps_order: Optional[int] = None
 
     def __init__(
         self,
@@ -104,6 +105,12 @@ class GCPSParams(DefaultDependency):
         gcps_file: Annotated[
             Optional[str],
             Query(title="Ground Control Points GeoJSON path"),
+        ] = None,
+        gcps_order: Annotated[
+            Optional[int],
+            Query(
+                title="The maximum order to use for GCP derived polynomials if possible. The default is to autoselect based on the number of GCPs. A value of -1 triggers use of Thin Plate Spline instead of polynomials."
+            ),
         ] = None,
         cutline: Annotated[
             Optional[str],
@@ -129,6 +136,9 @@ class GCPSParams(DefaultDependency):
             ]
         elif gcps_file:
             self.gcps = get_gcps(gcps_file)
+
+        if gcps_order is not None:
+            self.gcps_order = gcps_order
 
         if self.gcps and len(self.gcps) < 3:
             raise HTTPException(

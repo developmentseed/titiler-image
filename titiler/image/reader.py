@@ -26,6 +26,7 @@ class Reader(io.Reader):
 
     gcps: Optional[List[GroundControlPoint]] = attr.ib(default=None)
     gcps_crs: Optional[CRS] = attr.ib(default=WGS84_CRS)
+    gcps_order: Optional[int] = attr.ib(default=None)
 
     cutline: Optional[str] = attr.ib(default=None)
 
@@ -50,6 +51,8 @@ class Reader(io.Reader):
                     "src_transform": from_gcps(dataset.gcps[0]),
                 }
             )
+            if self.gcps_order is not None:
+                vrt_options.update({"max_gcp_order": self.gcps_order})
 
         # Option 2: Cutline
         if self.cutline:

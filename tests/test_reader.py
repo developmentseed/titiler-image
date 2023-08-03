@@ -73,7 +73,15 @@ def test_reader_external_gcps():
             assert info.height == 1071
 
             # The topleft corner should be masked
-            assert src.preview(indexes=1).array.mask[0, 0, 0]
+            img = src.preview(indexes=1)
+            assert img.array.mask[0, 0, 0]
+
+        # Validated that gcps_order has influence
+        with Reader(cog_no_gcps, gcps=get_gcps(cog_geojson), gcps_order=-1) as src:
+            img2 = src.preview(indexes=1)
+
+        with numpy.testing.assert_raises(AssertionError):
+            numpy.testing.assert_array_equal(img2.array.data, img.array.data)
 
 
 def test_reader_internal_external_gcps():
