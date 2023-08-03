@@ -12,7 +12,6 @@ from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.middleware import CacheControlMiddleware
 from titiler.image import __version__ as titiler_image_version
 from titiler.image.factory import (
-    DeepZoomFactory,
     GeoTilerFactory,
     IIIFFactory,
     LocalTilerFactory,
@@ -86,10 +85,6 @@ app.include_router(image_tiles.router, tags=["Local Tiles"], prefix="/image")
 
 geo_tiles = GeoTilerFactory(router_prefix="/geo")
 app.include_router(geo_tiles.router, tags=["Geo Tiles"], prefix="/geo")
-
-deepzoom = DeepZoomFactory(router_prefix="/deepzoom")
-app.include_router(deepzoom.router, tags=["Deepzoom"], prefix="/deepzoom")
-
 
 ###############################################################################
 # Health Check Endpoint

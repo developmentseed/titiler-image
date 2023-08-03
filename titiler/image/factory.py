@@ -1,7 +1,6 @@
 """titiler.image factories."""
 
 import abc
-import math
 import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Type
@@ -12,7 +11,6 @@ from pydantic import conint
 from rasterio import windows
 from rio_tiler.io import BaseReader, ImageReader
 from rio_tiler.models import Info
-from rio_tiler.types import ColorMapType
 from starlette.requests import Request
 from starlette.responses import (
     HTMLResponse,
@@ -37,7 +35,7 @@ from titiler.core.factory import TilerFactory, img_endpoint_params
 from titiler.core.models.mapbox import TileJSON
 from titiler.core.models.responses import Statistics
 from titiler.core.resources.enums import ImageType, MediaType
-from titiler.core.resources.responses import JSONResponse, XMLResponse
+from titiler.core.resources.responses import JSONResponse
 from titiler.core.routing import EndpointScope
 from titiler.image.dependencies import DatasetParams, GCPSParams
 from titiler.image.models import iiifInfo
@@ -935,248 +933,6 @@ class IIIFFactory(BaseFactory):
 
 
 ###############################################################################
-# Deepzoom Endpoints Factory
-###############################################################################
-@dataclass
-class DeepZoomFactory(BaseFactory):
-    """Deepzoom Factory."""
-
-    add_viewer: bool = True
-
-    def register_routes(self):
-        """Register Routes."""
-        self.register_deepzoom()
-
-        if self.add_viewer:
-            self.register_viewer()
-
-    def register_deepzoom(self):
-        """Register deepzoom API routes."""
-
-        @self.router.get("/deepzoom.dzi", response_class=XMLResponse)
-        def deepzoom(
-            request: Request,
-            src_path: Annotated[
-                str,
-                Query(description="Dataset URL", alias="url"),
-            ],
-            format: Annotated[
-                ImageType,
-                Query(description="Output image type. Defaults to PNG."),
-            ] = ImageType.png,
-        ):
-            """DeepZoom metadata."""
-            with ImageReader(src_path) as dst:
-                info = dst.info()
-
-            return templates.TemplateResponse(
-                name="deepzoom.xml",
-                context={"request": request, "info": info, "format": format},
-                media_type=MediaType.xml.value,
-            )
-
-        # TODO: it doesn't work yet
-        @self.router.get("/{z}/{x}_{y}", **img_endpoint_params)
-        @self.router.get("/{z}/{x}_{y}.{format}", **img_endpoint_params)
-        def deepzoom_tile(
-            level: Annotated[int, Path(alias="z")],
-            column: Annotated[int, Path(alias="x")],
-            row: Annotated[int, Path(alias="y")],
-            src_path: Annotated[
-                str,
-                Query(description="Dataset URL", alias="url"),
-            ],
-            format: Annotated[
-                ImageType,
-                "Output Image Format",
-            ] = ImageType.png,
-            layer_params: BidxExprParams = Depends(),
-            dataset_params: DatasetParams = Depends(),
-            rescale: RescalingParams = Depends(),
-            color_formula: Annotated[
-                Optional[str],
-                Query(
-                    title="Color Formula",
-                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-                ),
-            ] = None,
-            colormap: ColorMapParams = Depends(),
-            add_mask: Annotated[
-                Optional[bool],
-                Query(
-                    alias="return-mask",
-                    description="Add mask to the output data.",
-                ),
-            ] = None,
-        ):
-            """DeepZoom tile."""
-            tile_size = 254
-            tile_overlap = 1
-
-            with ImageReader(src_path) as dst:
-                max_dimension = max(dst.dataset.width, dst.dataset.height)
-                max_level = int(math.ceil(math.log(max_dimension, 2))) + 1
-                assert 0 <= level and level < max_level, "Invalid pyramid level"
-
-                print(max_dimension)
-                print(max_level)
-
-                # Overview Size
-                # level_width = dst.dataset.width // 2 ** (max_level - level)
-                # level_height = dst.dataset.height // 2 ** (max_level - level)
-                scale = math.pow(0.5, max_level - 1 - level)
-                level_width = int(math.ceil(dst.dataset.width * scale))
-                level_height = int(math.ceil(dst.dataset.height * scale))
-
-                print(level_height, level_width)
-
-                # Nb tiles for Ovr
-                level_x_tile = int(math.ceil(level_width / tile_size))
-                level_y_tile = int(math.ceil(level_height / tile_size))
-
-                print(level_x_tile, level_y_tile)
-
-                offset_x = 0 if column == 0 else tile_overlap
-                offset_y = 0 if row == 0 else tile_overlap
-
-                x = (column * tile_size) - offset_x
-                y = (row * tile_size) - offset_y
-                w = tile_size + (1 if column == 0 else 2) * tile_overlap
-                h = tile_size + (1 if row == 0 else 2) * tile_overlap
-
-                w = min(w, level_width - x)
-                h = min(h, level_height - y)
-
-                print((x, y, x + w, y + h))
-
-                # Output Size
-                width = (
-                    min(tile_size, level_width - (tile_size * (level_x_tile - 1)))
-                    if column == level_x_tile - 1
-                    else tile_size
-                )
-                height = (
-                    min(tile_size, level_height - (tile_size * (level_y_tile - 1)))
-                    if row == level_y_tile - 1
-                    else tile_size
-                )
-
-                print(width, height)
-
-                # BBox
-                x_origin = (dst.dataset.width / level_width) * tile_size * column
-                y_origin = (dst.dataset.height / level_height) * tile_size * row
-                x_max = min(
-                    dst.dataset.width,
-                    x_origin + dst.dataset.width / level_width * width,
-                )
-                y_max = min(
-                    dst.dataset.height,
-                    y_origin + dst.dataset.height / level_height * height,
-                )
-
-                print(x_origin, y_origin, x_max, y_max)
-
-                w = windows.from_bounds(
-                    x_origin,
-                    y_max,
-                    x_max,
-                    y_origin,
-                    transform=dst.transform,
-                )
-                image = dst.read(
-                    window=w,
-                    width=width,
-                    height=height,
-                    **layer_params,
-                    **dataset_params,
-                )
-                dst_colormap = getattr(dst, "colormap", None)
-
-                if rescale:
-                    image.rescale(rescale)
-
-                if color_formula:
-                    image.apply_color_formula(color_formula)
-
-                if cmap := colormap or dst_colormap:
-                    image = image.apply_colormap(cmap)
-
-                content = image.render(
-                    add_mask=add_mask if add_mask is not None else True,
-                    img_format=format.driver,
-                    **format.profile,
-                )
-
-            return Response(content, media_type=format.mediatype)
-
-    def register_viewer(self):
-        """Register deepzoom viewer."""
-
-        @self.router.get("/deepzoom.html", response_class=HTMLResponse)
-        def deepzoom_viewer(
-            request: Request,
-            src_path: Annotated[
-                str,
-                Query(description="Dataset URL", alias="url"),
-            ],
-            format: Annotated[
-                ImageType,
-                "Output Image Format",
-            ] = ImageType.png,
-            layer_params: BidxExprParams = Depends(),
-            dataset_params: DatasetParams = Depends(),
-            rescale: RescalingParams = Depends(),
-            color_formula: Annotated[
-                Optional[str],
-                Query(
-                    title="Color Formula",
-                    description="rio-color formula (info: https://github.com/mapbox/rio-color)",
-                ),
-            ] = None,
-            colormap: ColorMapParams = Depends(),
-            add_mask: Annotated[
-                Optional[bool],
-                Query(
-                    alias="return-mask",
-                    description="Add mask to the output data.",
-                ),
-            ] = None,
-        ):
-            """DeepZoom viewer."""
-            route_params: Dict[str, Any] = {
-                "z": "{z}",
-                "x": "{x}",
-                "y": "{y}",
-                "format": format.value,
-            }
-            dpz_url = self.url_for(request, "deepzoom_tile", **route_params)
-
-            qs_key_to_remove = ["format"]
-            qs = [
-                (key, value)
-                for (key, value) in request.query_params._list
-                if key.lower() not in qs_key_to_remove
-            ]
-            if qs:
-                dpz_url += f"?{urllib.parse.urlencode(qs)}"
-
-            with ImageReader(src_path) as dst:
-                info = dst.info()
-
-            return templates.TemplateResponse(
-                name="deepzoom.html",
-                context={
-                    "request": request,
-                    "endpoint": dpz_url,
-                    "width": info.width,
-                    "height": info.height,
-                },
-                media_type=MediaType.html.value,
-            )
-
-
-###############################################################################
 # Geo Tiler Factory
 ###############################################################################
 @dataclass
@@ -1191,21 +947,9 @@ class GeoTilerFactory(TilerFactory):
     dataset_dependency: Type[DefaultDependency] = DatasetParams
 
     def register_routes(self):
-        """
-        This Method register routes to the router.
-        Because we wrap the endpoints in a class we cannot define the routes as
-        methods (because of the self argument). The HACK is to define routes inside
-        the class method and register them after the class initialization.
-        """
-        # Default Routes
-        self.info()
+        """This Method register routes to the router."""
         self.tile()
         self.tilejson()
-        self.wmts()
-
-        # Optional Routes
-        if self.add_preview:
-            self.preview()
 
         if self.add_viewer:
             self.map_viewer()

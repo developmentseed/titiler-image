@@ -1,6 +1,5 @@
 """Common response models."""
 
-from enum import Enum
 from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
