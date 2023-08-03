@@ -5,6 +5,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
+import jinja2
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, params
 from fastapi.dependencies.utils import get_parameterless_sub_dependant
 from pydantic import conint
@@ -51,14 +52,10 @@ from titiler.image.utils import (
     rotate,
 )
 
-try:
-    from importlib.resources import files as resources_files  # type: ignore
-except ImportError:
-    # Try backported to PY<39 `importlib_resources`.
-    from importlib_resources import files as resources_files  # type: ignore
-
-# TODO: mypy fails in python 3.9, we need to find a proper way to do this
-templates = Jinja2Templates(directory=str(resources_files(__package__) / "templates"))  # type: ignore
+DEFAULT_TEMPLATES = Jinja2Templates(
+    directory="",
+    loader=jinja2.ChoiceLoader([jinja2.PackageLoader(__package__, "templates")]),
+)  # type:ignore
 
 
 @dataclass  # type: ignore
@@ -83,6 +80,8 @@ class BaseFactory(metaclass=abc.ABCMeta):
     route_dependencies: List[Tuple[List[EndpointScope], List[params.Depends]]] = field(
         default_factory=list
     )
+
+    templates: Jinja2Templates = DEFAULT_TEMPLATES
 
     def __post_init__(self):
         """Post Init: register route and configure specific options."""
@@ -443,8 +442,8 @@ class LocalTilerFactory(BaseFactory):
             if request.query_params._list:
                 tilejson_url += f"?{urllib.parse.urlencode(request.query_params._list)}"
 
-            return templates.TemplateResponse(
-                name="tiles.html",
+            return self.templates.TemplateResponse(
+                name="local.html",
                 context={
                     "request": request,
                     "tilejson_endpoint": tilejson_url,
@@ -920,7 +919,7 @@ class IIIFFactory(BaseFactory):
                 ["text/html"],
             )
             if output_type:
-                return templates.TemplateResponse(
+                return self.templates.TemplateResponse(
                     name="iiif.html",
                     context={
                         "request": request,
