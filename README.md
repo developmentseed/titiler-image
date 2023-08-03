@@ -4,17 +4,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com//developmentseed/titiler-image/actions?query=workflow%3ACI" target="_blank">
+  <a href="https://github.com/developmentseed/titiler-image/actions?query=workflow%3ACI" target="_blank">
       <img src="https://github.com/developmentseed/titiler-image/workflows/CI/badge.svg" alt="Test">
   </a>
-  <a href="https://codecov.io/gh//developmentseed/titiler-image" target="_blank">
-      <img src="https://codecov.io/gh//developmentseed/titiler-image/branch/main/graph/badge.svg" alt="Coverage">
+  <a href="https://codecov.io/gh/developmentseed/titiler-image" target="_blank">
+      <img src="https://codecov.io/gh/developmentseed/titiler-image/branch/main/graph/badge.svg" alt="Coverage">
   </a>
   <a href="https://pypi.org/project/titiler.image" target="_blank">
       <img src="https://img.shields.io/pypi/v/titiler.image?color=%2334D058&label=pypi%20package" alt="Package version">
   </a>
   <a href="https://github.com//developmentseed/titiler-image/blob/main/LICENSE" target="_blank">
-      <img src="https://img.shields.io/github/license//developmentseed/titiler-image.svg" alt="License">
+      <img src="https://img.shields.io/github/license/developmentseed/titiler-image.svg" alt="License">
   </a>
 </p>
 
